@@ -1,4 +1,11 @@
-import struct, sys
+#!/usr/bin/python
+
+# Changelog
+#  0.11 - Version by adamselene
+#  0.11pd - Tweaked version by pdurrant
+#  0.12 - extracts pictures too, and all into a folder.
+
+import struct, sys, os, imghdr
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -110,21 +117,27 @@ class Sectionizer:
 		self.f = file(filename, perm)
 		header = self.f.read(78)
 		self.ident = header[0x3C:0x3C+8]
-		num_sections, = struct.unpack_from('>H', header, 76)
-		sections = self.f.read(num_sections*8)
-		self.sections = struct.unpack_from('>%dL' % (num_sections*2), sections, 0)[::2] + (0xfffffff, )
+		self.num_sections, = struct.unpack_from('>H', header, 76)
+		sections = self.f.read(self.num_sections*8)
+		self.sections = struct.unpack_from('>%dL' % (self.num_sections*2), sections, 0)[::2] + (0xfffffff, )
 
 	def loadSection(self, section):
 		before, after = self.sections[section:section+2]
 		self.f.seek(before)
 		return self.f.read(after - before)
 
-def unpackBook(infile, outfile):
+def unpackBook(infile):
+	outdir = os.path.splitext(infile)[0]
+	if not os.path.exists(outdir):
+		os.mkdir(outdir)
+	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
+	
 	sect = Sectionizer(infile, 'rb')
 	if sect.ident != 'BOOKMOBI' and sect.ident != 'TEXtREAd':
 		raise ValueError('invalid file format')
 
 	header = sect.loadSection(0)
+	firstimg, = struct.unpack_from('>L', header, 0x6C)
 
 	crypto_type, = struct.unpack_from('>H', header, 0xC)
 	if crypto_type != 0:
@@ -136,12 +149,14 @@ def unpackBook(infile, outfile):
 	trailers = 0
 	if sect.ident == 'BOOKMOBI':
 		mobi_length, = struct.unpack_from('>L', header, 0x14)
-		if mobi_length >= 0xE4:
+		mobi_version, = struct.unpack_from('>L', header, 0x68)
+		if (mobi_length >= 0xE8) and (mobi_version > 5):
 			flags, = struct.unpack_from('>H', header, 0xF2)
 			multibyte = flags & 1
 			while flags > 1:
-				trailers += 1
-				flags &= flags - 2
+				if flags & 2:
+					trailers += 1
+				flags = flags >> 1
 
 	compression, = struct.unpack_from('>H', header, 0x0)
 	if compression == 0x4448:
@@ -175,25 +190,41 @@ def unpackBook(infile, outfile):
 			data = data[:-num]
 		return data
 
-	f = file(outfile, 'wb')
+	f = file(outhtml, 'wb')
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
 		data = trimTrailingDataEntries(data)
 		data = unpack(data)
 		f.write(data)
+	f.close()
+	
+	for i in xrange(firstimg, sect.num_sections):
+		data = sect.loadSection(i)
+		imgtype = imghdr.what("dummy",data)
+		if imgtype in ['gif','jpeg','bmp']:
+			outimg = os.path.join(outdir, ("Image-%05d" % (1+i-firstimg)) + '.' + imgtype)
+			f = file(outimg, 'wb')
+			f.write(data)
+			f.close()
+			
 
-print "MobiUnpack 0.11"
+print "MobiUnpack 0.12"
 print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-if len(sys.argv) != 3:
+if len(sys.argv) < 2:
 	print ""
 	print "Description:"
-	print "  Unpacks an unencrypted MobiPocket file."
+	print "  Unpacks an unencrypted MobiPocket file to html and images"
+	print "  in a folder of the same name as the mobipocket file."
 	print "Usage:"
-	print "  mobiunpack.py infile.mobi outfile.html"
+	print "  mobiunpack.py infile.mobi"
 else:  
-	infile, outfile = sys.argv[1:]
+	infile = sys.argv[1]
+	infileext = os.path.splitext(infile)[1].upper()
+	if infileext not in ['.MOBI', '.PRC', '.AZW']:
+		print "Error: first parameter must be a mobipocket file."
+		exit(1)	
 	try:
-		unpackBook(infile, outfile)
+		unpackBook(infile)
 	except ValueError, e:
 		print "Error: %s" % e
 		exit(1)
