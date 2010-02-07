@@ -4,8 +4,22 @@
 #  0.11 - Version by adamselene
 #  0.11pd - Tweaked version by pdurrant
 #  0.12 - extracts pictures too, and all into a folder.
+#  0.13 - added bak in optional output dir for those who don't want ti based on infile
+#  0.14 - auto flush stdout and wrapped in main, added proper return codes
 
-import struct, sys, os, imghdr
+class Unbuffered:
+    def __init__(self, stream):
+        self.stream = stream
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+import sys
+sys.stdout=Unbuffered(sys.stdout)
+
+import struct, os, imghdr
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -126,10 +140,7 @@ class Sectionizer:
 		self.f.seek(before)
 		return self.f.read(after - before)
 
-def unpackBook(infile):
-	outdir = os.path.splitext(infile)[0]
-	if not os.path.exists(outdir):
-		os.mkdir(outdir)
+def unpackBook(infile, outdir):
 	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
 	
 	sect = Sectionizer(infile, 'rb')
@@ -202,29 +213,42 @@ def unpackBook(infile):
 		data = sect.loadSection(i)
 		imgtype = imghdr.what("dummy",data)
 		if imgtype in ['gif','jpeg','bmp']:
-			outimg = os.path.join(outdir, ("Image-%05d" % (1+i-firstimg)) + '.' + imgtype)
+			outimg = os.path.join(os.path.join(outdir,'images'),("Image-%05d" % (1+i-firstimg)) + '.' + imgtype)
 			f = file(outimg, 'wb')
 			f.write(data)
 			f.close()
 			
 
-print "MobiUnpack 0.12"
-print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-if len(sys.argv) < 2:
-	print ""
-	print "Description:"
-	print "  Unpacks an unencrypted MobiPocket file to html and images"
-	print "  in a folder of the same name as the mobipocket file."
-	print "Usage:"
-	print "  mobiunpack.py infile.mobi"
-else:  
-	infile = sys.argv[1]
-	infileext = os.path.splitext(infile)[1].upper()
-	if infileext not in ['.MOBI', '.PRC', '.AZW']:
-		print "Error: first parameter must be a mobipocket file."
-		exit(1)	
-	try:
-		unpackBook(infile)
-	except ValueError, e:
-		print "Error: %s" % e
-		exit(1)
+def main(argv=sys.argv):
+	print "MobiUnpack 0.14"
+	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
+	if len(sys.argv) < 2:
+		print ""
+		print "Description:"
+		print "  Unpacks an unencrypted MobiPocket file to html and images"
+		print "  in a folder of the same name as the mobipocket file."
+		print "Usage:"
+		print "  mobiunpack.py infile.mobi [outdir]"
+		return 1
+	else:  
+		if len(sys.argv) >= 3:
+			infile, outdir = sys.argv[1:]
+		else:
+			infile = sys.argv[1]
+			outdir = os.path.splitext(infile)[0]
+			if not os.path.exists(outdir):
+				os.mkdir(outdir)
+
+			infileext = os.path.splitext(infile)[1].upper()
+			if infileext not in ['.MOBI', '.PRC', '.AZW']:
+				print "Error: first parameter must be a mobipocket file."
+				return 1	
+		try:
+			unpackBook(infile, outdir)
+		except ValueError, e:
+			print "Error: %s" % e
+			return 1
+		return 0
+
+if __name__ == "__main__":
+	sys.exit(main())
