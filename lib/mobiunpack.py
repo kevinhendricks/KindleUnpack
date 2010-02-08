@@ -6,6 +6,7 @@
 #  0.12 - extracts pictures too, and all into a folder.
 #  0.13 - added bak in optional output dir for those who don't want ti based on infile
 #  0.14 - auto flush stdout and wrapped in main, added proper return codes
+#  0.15 - added support for metadata
 
 class Unbuffered:
     def __init__(self, stream):
@@ -140,19 +141,95 @@ class Sectionizer:
 		self.f.seek(before)
 		return self.f.read(after - before)
 
+
+def getMetaData(extheader):
+        id_map = { 
+            100 : 'Author',
+            101 : 'Publisher',
+            102 : 'Imprint',
+            103 : 'Description',
+            104 : 'ISBN',
+            105 : 'Subject',
+            106 : 'Published',
+            107 : 'Review',
+            108 : 'Contributor',
+            109 : 'Rights',
+            111 : 'Type',
+            112 : 'Source',
+            113 : 'ASIN',
+            503 : 'Updated Title',
+        }
+        metadata = {}
+        length, num_items = struct.unpack('>LL', extheader[4:12])
+        extheader = extheader[12:]
+        pos = 0
+        left = num_items
+        while left > 0:
+            left -= 1
+            id, size = struct.unpack('>LL', extheader[pos:pos+8])
+            content = extheader[pos + 8: pos + size]
+            pos += size
+            if id in id_map.keys():
+                name = id_map[id]
+                metadata[name] = content
+        return metadata
+
+
 def unpackBook(infile, outdir):
-	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
-	
+        codec_map = {
+            1252 : 'cp-1252',
+            65001: 'utf-8',
+        }
+        if not os.path.exists(outdir):
+            os.mkdir(outdir)
+	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+	outmeta = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '_meta.html'
+        imgdir = os.path.join(outdir, 'images')
+        if not os.path.exists(imgdir):
+            os.mkdir(imgdir)
+        
 	sect = Sectionizer(infile, 'rb')
 	if sect.ident != 'BOOKMOBI' and sect.ident != 'TEXtREAd':
 		raise ValueError('invalid file format')
 
 	header = sect.loadSection(0)
+
 	firstimg, = struct.unpack_from('>L', header, 0x6C)
 
 	crypto_type, = struct.unpack_from('>H', header, 0xC)
 	if crypto_type != 0:
 		raise ValueError('file is encrypted')
+
+        # get length of this header
+        length, type, codepage, unique_id, version = struct.unpack('>LLLLL', header[20:40])
+
+        # convert the codepage to codec string
+        codec = 'cp-1252'
+        if codepage in codec_map.keys() :
+            codec = codec_map[codepage]
+
+        # get book title
+        toff, tlen = struct.unpack('>II', header[0x54:0x5c])
+        tend = toff + tlen
+        title = header[toff:tend]
+
+        # get the language code
+        langcode = struct.unpack('!L', header[0x5c:0x60])[0]
+        langid = langcode & 0xFF
+        sublangid = (langcode >> 10) & 0xFF
+
+        # if exth region exists then parse it for the metadata
+        exth_flag, = struct.unpack('>L', header[0x80:0x84])
+        metadata = {}
+        if exth_flag & 0x40:
+            metadata = getMetaData(header[16 + length:])
+
+        # add in what we have collected here
+        metadata['Title'] = title
+        metadata['Codec'] = codec
+        metadata['LangID'] = str(langid)
+        metadata['SubLangID'] = str(sublangid)
+        metadata['UniqueID'] = str(unique_id)
 
 	records, = struct.unpack_from('>H', header, 0x8)
 
@@ -201,6 +278,7 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
+        # write out the raw mobi html-like markup languge
 	f = file(outhtml, 'wb')
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
@@ -208,20 +286,34 @@ def unpackBook(infile, outdir):
 		data = unpack(data)
 		f.write(data)
 	f.close()
+
+        # write out the metadata as html tags
+        f = file(outmeta, 'wb')
+        data = ''
+        # Handle Codec and Title and then all of the remainder
+        data += '<title>' + metadata['Title'] + '</title>\n'
+        data += '<meta http-equiv="content-type" content="text/html; charset=' + metadata['Codec'] + '" />\n'
+        for key in metadata.keys():
+            tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
+            data += tag
+        f.write(data)
+        f.close()
 	
+        # write out the images to the folder images
 	for i in xrange(firstimg, sect.num_sections):
 		data = sect.loadSection(i)
 		imgtype = imghdr.what("dummy",data)
 		if imgtype in ['gif','jpeg','bmp']:
-			outimg = os.path.join(os.path.join(outdir,'images'),("Image-%05d" % (1+i-firstimg)) + '.' + imgtype)
+			outimg = os.path.join(imgdir,("Image-%05d" % (1+i-firstimg))) + '.' + imgtype
 			f = file(outimg, 'wb')
 			f.write(data)
 			f.close()
 			
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.14"
+	print "MobiUnpack 0.15"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
+	print "  With Images Support and Other Additions by P. Durrant"
 	if len(sys.argv) < 2:
 		print ""
 		print "Description:"
@@ -236,18 +328,24 @@ def main(argv=sys.argv):
 		else:
 			infile = sys.argv[1]
 			outdir = os.path.splitext(infile)[0]
-			if not os.path.exists(outdir):
-				os.mkdir(outdir)
 
-			infileext = os.path.splitext(infile)[1].upper()
-			if infileext not in ['.MOBI', '.PRC', '.AZW']:
-				print "Error: first parameter must be a mobipocket file."
-				return 1	
+                infileext = os.path.splitext(infile)[1].upper()
+                if infileext not in ['.MOBI', '.PRC', '.AZW']:
+                        print "Error: first parameter must be a mobipocket file."
+                        return 1
+	
 		try:
+                        print 'Unpacking Book ... '
 			unpackBook(infile, outdir)
+                        print 'Completed'
+                        outname = infile.rsplit('.',1)[0] + '.rawml'
+                        outname = os.path.join(outdir,outname)
+                        print 'The Mobi Raw Markup Language File can be found at: ' + outname 
+
 		except ValueError, e:
 			print "Error: %s" % e
 			return 1
+
 		return 0
 
 if __name__ == "__main__":
