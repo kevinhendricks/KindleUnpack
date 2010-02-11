@@ -4,18 +4,20 @@
 #  0.11 - Version by adamselene
 #  0.11pd - Tweaked version by pdurrant
 #  0.12 - extracts pictures too, and all into a folder.
-#  0.13 - added bak in optional output dir for those who don't want ti based on infile
+#  0.13 - added back in optional output dir for those who don't want it based on infile
 #  0.14 - auto flush stdout and wrapped in main, added proper return codes
 #  0.15 - added support for metadata
+#  0.16 - metadata now starting to be output as an opf file (PD)
+
 
 class Unbuffered:
-    def __init__(self, stream):
-        self.stream = stream
-    def write(self, data):
-        self.stream.write(data)
-        self.stream.flush()
-    def __getattr__(self, attr):
-        return getattr(self.stream, attr)
+	def __init__(self, stream):
+		self.stream = stream
+	def write(self, data):
+		self.stream.write(data)
+		self.stream.flush()
+	def __getattr__(self, attr):
+		return getattr(self.stream, attr)
 
 import sys
 sys.stdout=Unbuffered(sys.stdout)
@@ -141,53 +143,143 @@ class Sectionizer:
 		self.f.seek(before)
 		return self.f.read(after - before)
 
+def getLanguage(langID, sublangID):
+	mobilangdict = {
+		54 : {0 : 'af'}, # Afrikaans
+		28 : {0 : 'sq'}, # Albanian
+		1 : {0 : 'ar' , 20 : 'ar-dz' , 60 : 'ar-bh' , 12 : 'ar-eg' , 44 : 'ar-jo' , 52 : 'ar-kw' , 48 : 'ar-lb' , 24 : 'ar-ma' , 32 : 'ar-om' , 64 : 'ar-qa' , 4 : 'ar-sa' , 40 : 'ar-sy' , 28 : 'ar-tn' , 56 : 'ar-ae' , 36 : 'ar-ye'}, # Arabic,  Arabic (Algeria),  Arabic (Bahrain),  Arabic (Egypt),  Arabic (Jordan),  Arabic (Kuwait),  Arabic (Lebanon),  Arabic (Morocco),  Arabic (Oman),  Arabic (Qatar),  Arabic (Saudi Arabia),  Arabic (Syria),  Arabic (Tunisia),  Arabic (United Arab Emirates),  Arabic (Yemen)
+		43 : {0 : 'hy'}, # Armenian
+		77 : {0 : 'as'}, # Assamese
+		44 : {0 : 'az'}, # "Azeri (IANA: Azerbaijani)
+		45 : {0 : 'eu'}, # Basque
+		35 : {0 : 'be'}, # Belarusian
+		69 : {0 : 'bn'}, # Bengali
+		2 : {0 : 'bg'}, # Bulgarian
+		3 : {0 : 'ca'}, # Catalan
+		4 : {0 : 'zh' , 12 : 'zh-hk' , 8 : 'zh-cn' , 16 : 'zh-sg' , 4 : 'zh-tw'}, # Chinese,  Chinese (Hong Kong),  Chinese (PRC),  Chinese (Singapore),  Chinese (Taiwan)
+		26 : {0 : 'hr'}, # Croatian
+		5 : {0 : 'cs'}, # Czech
+		6 : {0 : 'da'}, # Danish
+		19 : {0 : 'nl' , 8 : 'nl-be'}, # Dutch / Flemish,  Dutch (Belgium)
+		9 : {0 : 'en' , 12 : 'en-au' , 40 : 'en-bz' , 16 : 'en-ca' , 24 : 'en-ie' , 32 : 'en-jm' , 20 : 'en-nz' , 52 : 'en-ph' , 28 : 'en-za' , 44 : 'en-tt' , 8 : 'en-gb', 2 : 'en-gb' , 4 : 'en-us' , 48 : 'en-zw'}, # English,  English (Australia),  English (Belize),  English (Canada),  English (Ireland),  English (Jamaica),  English (New Zealand),  English (Philippines),  English (South Africa),  English (Trinidad),  English (United Kingdom),  English (United States),  English (Zimbabwe)
+		37 : {0 : 'et'}, # Estonian
+		56 : {0 : 'fo'}, # Faroese
+		41 : {0 : 'fa'}, # Farsi / Persian
+		11 : {0 : 'fi'}, # Finnish
+		12 : {0 : 'fr' , 4 : 'fr' , 8 : 'fr-be' , 12 : 'fr-ca' , 20 : 'fr-lu' , 24 : 'fr-mc' , 16 : 'fr-ch'}, # French,  French (Mobipocket bug?),  French (Belgium),  French (Canada),  French (Luxembourg),  French (Monaco),  French (Switzerland)
+		55 : {0 : 'ka'}, # Georgian
+		7 : {0 : 'de' , 12 : 'de-at' , 20 : 'de-li' , 16 : 'de-lu' , 8 : 'de-ch'}, # German,  German (Austria),  German (Liechtenstein),  German (Luxembourg),  German (Switzerland)
+		8 : {0 : 'el'}, # Greek, Modern (1453-)
+		71 : {0 : 'gu'}, # Gujarati
+		13 : {0 : 'he'}, # Hebrew (also code 'iw'?)
+		57 : {0 : 'hi'}, # Hindi
+		14 : {0 : 'hu'}, # Hungarian
+		15 : {0 : 'is'}, # Icelandic
+		33 : {0 : 'id'}, # Indonesian
+		16 : {0 : 'it' , 4 : 'it' , 8 : 'it-ch'}, # Italian,  Italian (Mobipocket bug?),  Italian (Switzerland)
+		17 : {0 : 'ja'}, # Japanese
+		75 : {0 : 'kn'}, # Kannada
+		63 : {0 : 'kk'}, # Kazakh
+		87 : {0 : 'x-kok'}, # Konkani (real language code is 'kok'?)
+		18 : {0 : 'ko'}, # Korean
+		38 : {0 : 'lv'}, # Latvian
+		39 : {0 : 'lt'}, # Lithuanian
+		47 : {0 : 'mk'}, # Macedonian
+		62 : {0 : 'ms'}, # Malay
+		76 : {0 : 'ml'}, # Malayalam
+		58 : {0 : 'mt'}, # Maltese
+		78 : {0 : 'mr'}, # Marathi
+		97 : {0 : 'ne'}, # Nepali
+		20 : {0 : 'no'}, # Norwegian
+		72 : {0 : 'or'}, # Oriya
+		21 : {0 : 'pl'}, # Polish
+		22 : {0 : 'pt' , 8 : 'pt' , 4 : 'pt-br'}, # Portuguese,  Portuguese (Mobipocket bug?),  Portuguese (Brazil)
+		70 : {0 : 'pa'}, # Punjabi
+		23 : {0 : 'rm'}, # "Rhaeto-Romanic" (IANA: Romansh)
+		24 : {0 : 'ro'}, # Romanian
+		25 : {0 : 'ru'}, # Russian
+		59 : {0 : 'sz'}, # "Sami (Lappish)" (not an IANA language code)
+								  # IANA code for "Northern Sami" is 'se'
+								  # 'SZ' is the IANA region code for Swaziland
+		79 : {0 : 'sa'}, # Sanskrit
+		26 : {12 : 'sr'}, # Serbian -- Mobipocket Cyrillic/Latin distinction broken
+		27 : {0 : 'sk'}, # Slovak
+		36 : {0 : 'sl'}, # Slovenian
+		46 : {0 : 'sb'}, # "Sorbian" (not an IANA language code)
+								  # 'SB' is IANA region code for 'Solomon Islands'
+								  # Lower Sorbian = 'dsb'
+								  # Upper Sorbian = 'hsb'
+								  # Sorbian Languages = 'wen'
+		10 : {0 : 'es' , 4 : 'es' , 44 : 'es-ar' , 64 : 'es-bo' , 52 : 'es-cl' , 36 : 'es-co' , 20 : 'es-cr' , 28 : 'es-do' , 48 : 'es-ec' , 68 : 'es-sv' , 16 : 'es-gt' , 72 : 'es-hn' , 8 : 'es-mx' , 76 : 'es-ni' , 24 : 'es-pa' , 60 : 'es-py' , 40 : 'es-pe' , 80 : 'es-pr' , 56 : 'es-uy' , 32 : 'es-ve'}, # Spanish,  Spanish (Mobipocket bug?),  Spanish (Argentina),  Spanish (Bolivia),  Spanish (Chile),  Spanish (Colombia),  Spanish (Costa Rica),  Spanish (Dominican Republic),  Spanish (Ecuador),  Spanish (El Salvador),  Spanish (Guatemala),  Spanish (Honduras),  Spanish (Mexico),  Spanish (Nicaragua),  Spanish (Panama),  Spanish (Paraguay),  Spanish (Peru),  Spanish (Puerto Rico),  Spanish (Uruguay),  Spanish (Venezuela)
+		48 : {0 : 'sx'}, # "Sutu" (not an IANA language code)
+								  # "Sutu" is another name for "Southern Sotho"?
+								  # IANA code for "Southern Sotho" is 'st'
+		65 : {0 : 'sw'}, # Swahili
+		29 : {0 : 'sv' , 8 : 'sv-fi'}, # Swedish,  Swedish (Finland)
+		73 : {0 : 'ta'}, # Tamil
+		68 : {0 : 'tt'}, # Tatar
+		74 : {0 : 'te'}, # Telugu
+		30 : {0 : 'th'}, # Thai
+		49 : {0 : 'ts'}, # Tsonga
+		50 : {0 : 'tn'}, # Tswana
+		31 : {0 : 'tr'}, # Turkish
+		34 : {0 : 'uk'}, # Ukrainian
+		32 : {0 : 'ur'}, # Urdu
+		67 : {0 : 'uz' , 8 : 'uz'}, # Uzbek,  Uzbek (Mobipocket bug?)
+		42 : {0 : 'vi'}, # Vietnamese
+		52 : {0 : 'xh'}, # Xhosa
+		53 : {0 : 'zu'}, # Zulu
+	}
+
+	return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
 
 def getMetaData(extheader):
-        id_map = { 
-            100 : 'Author',
-            101 : 'Publisher',
-            102 : 'Imprint',
-            103 : 'Description',
-            104 : 'ISBN',
-            105 : 'Subject',
-            106 : 'Published',
-            107 : 'Review',
-            108 : 'Contributor',
-            109 : 'Rights',
-            111 : 'Type',
-            112 : 'Source',
-            113 : 'ASIN',
-            503 : 'Updated Title',
-        }
-        metadata = {}
-        length, num_items = struct.unpack('>LL', extheader[4:12])
-        extheader = extheader[12:]
-        pos = 0
-        left = num_items
-        while left > 0:
-            left -= 1
-            id, size = struct.unpack('>LL', extheader[pos:pos+8])
-            content = extheader[pos + 8: pos + size]
-            pos += size
-            if id in id_map.keys():
-                name = id_map[id]
-                metadata[name] = content
-        return metadata
+	id_map = { 
+		100 : 'Creator',
+		101 : 'Publisher',
+		102 : 'Imprint',
+		103 : 'Description',
+		104 : 'ISBN',
+		105 : 'Subject',
+		106 : 'Published',
+		107 : 'Review',
+		108 : 'Contributor',
+		109 : 'Rights',
+		111 : 'Type',
+		112 : 'Source',
+		113 : 'ASIN',
+		503 : 'Updated Title',
+	}
+	metadata = {}
+	length, num_items = struct.unpack('>LL', extheader[4:12])
+	extheader = extheader[12:]
+	pos = 0
+	left = num_items
+	while left > 0:
+		left -= 1
+		id, size = struct.unpack('>LL', extheader[pos:pos+8])
+		content = extheader[pos + 8: pos + size]
+		pos += size
+		if id in id_map.keys():
+			name = id_map[id]
+			metadata[name] = content
+	return metadata
 
 
 def unpackBook(infile, outdir):
-        codec_map = {
-            1252 : 'cp-1252',
-            65001: 'utf-8',
-        }
-        if not os.path.exists(outdir):
-            os.mkdir(outdir)
+	codec_map = {
+		1252 : 'cp-1252',
+		65001: 'utf-8',
+	}
+	if not os.path.exists(outdir):
+		os.mkdir(outdir)
 	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+	outopf = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.opf'
 	outmeta = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '_meta.html'
-        imgdir = os.path.join(outdir, 'images')
-        if not os.path.exists(imgdir):
-            os.mkdir(imgdir)
-        
+	imgdir = os.path.join(outdir, 'images')
+	if not os.path.exists(imgdir):
+		os.mkdir(imgdir)
+
 	sect = Sectionizer(infile, 'rb')
 	if sect.ident != 'BOOKMOBI' and sect.ident != 'TEXtREAd':
 		raise ValueError('invalid file format')
@@ -200,36 +292,36 @@ def unpackBook(infile, outdir):
 	if crypto_type != 0:
 		raise ValueError('file is encrypted')
 
-        # get length of this header
-        length, type, codepage, unique_id, version = struct.unpack('>LLLLL', header[20:40])
+	# get length of this header
+	length, type, codepage, unique_id, version = struct.unpack('>LLLLL', header[20:40])
 
-        # convert the codepage to codec string
-        codec = 'cp-1252'
-        if codepage in codec_map.keys() :
-            codec = codec_map[codepage]
+	# convert the codepage to codec string
+	codec = 'cp-1252'
+	if codepage in codec_map.keys() :
+		codec = codec_map[codepage]
 
-        # get book title
-        toff, tlen = struct.unpack('>II', header[0x54:0x5c])
-        tend = toff + tlen
-        title = header[toff:tend]
+	# get book title
+	toff, tlen = struct.unpack('>II', header[0x54:0x5c])
+	tend = toff + tlen
+	title = header[toff:tend]
 
-        # get the language code
-        langcode = struct.unpack('!L', header[0x5c:0x60])[0]
-        langid = langcode & 0xFF
-        sublangid = (langcode >> 10) & 0xFF
+	# get the language code
+	langcode = struct.unpack('!L', header[0x5c:0x60])[0]
+	langid = langcode & 0xFF
+	sublangid = (langcode >> 10) & 0xFF
 
-        # if exth region exists then parse it for the metadata
-        exth_flag, = struct.unpack('>L', header[0x80:0x84])
-        metadata = {}
-        if exth_flag & 0x40:
-            metadata = getMetaData(header[16 + length:])
+	# if exth region exists then parse it for the metadata
+	exth_flag, = struct.unpack('>L', header[0x80:0x84])
+	metadata = {}
+	if exth_flag & 0x40:
+		metadata = getMetaData(header[16 + length:])
 
-        # add in what we have collected here
-        metadata['Title'] = title
-        metadata['Codec'] = codec
-        metadata['LangID'] = str(langid)
-        metadata['SubLangID'] = str(sublangid)
-        metadata['UniqueID'] = str(unique_id)
+	# add in what we have collected here
+	metadata['Title'] = title
+	metadata['Codec'] = codec
+	metadata['LangID'] = str(langid)
+	metadata['SubLangID'] = str(sublangid)
+	metadata['UniqueID'] = str(unique_id)
 
 	records, = struct.unpack_from('>H', header, 0x8)
 
@@ -278,7 +370,7 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
-        # write out the raw mobi html-like markup languge
+	# write out the raw mobi html-like markup language
 	f = file(outhtml, 'wb')
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
@@ -287,8 +379,45 @@ def unpackBook(infile, outdir):
 		f.write(data)
 	f.close()
 
-        # write out the metadata as html tags
-        f = file(outmeta, 'wb')
+	# write out the metadata as an OEB 1.0 OPF file
+	outhtmlbasename = os.path.basename(outhtml)
+	f = file(outopf, 'wb')
+	data = '<?xml version="1.0" encoding="utf-8"?>\n'
+	data += '<package unique-identifier="uid">\n'
+	data += '<metadata>\n'
+	data += '<dc-metadata xmlns:dc="http://purl.org/metadata/dublin_core"'
+	data += ' xmlns:oebpackage="http://openebook.org/namespaces/oeb-package/1.0/">\n'
+	# Handle standard metadata
+	data += '<dc:Title>' + metadata.get('Title','Untitled') + '</dc:Title>\n'
+	data += '<dc:Language>' + getLanguage(metadata.get('LangID',0),metadata.get('SubLangID',0)) + '</dc:Language>\n'
+	data += '<dc:Identifier id="uid">' + metadata.get('UniqueID',0) + '</dc:Identifier>\n'
+	if 'Creator' in metadata:
+		data += '<dc:Creator>'+metadata.get('Creator')+'</dc:Creator>\n'
+	if 'Publisher' in metadata:
+		data += '<dc:Publisher>'+metadata.get('Publisher')+'</dc:Publisher>\n'
+	if 'ISBN' in metadata:
+		data += '<dc:Identifier scheme="ISBN">'+metadata.get('ISBN')+'</dc:Identifier>\n'
+	if 'Subject' in metadata:
+		data += '<dc:Subject>'+metadata.get('Subject')+'</dc:Subject>\n'
+	data += '</dc-metadata>\n<x-metadata>\n'
+	if 'Codec' in metadata:
+		data += '<output encoding=">'+metadata.get('Codec')+'"></output>\n'
+	
+	for key in metadata.keys():
+		tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
+		data += tag
+		
+	data += '</x-metadata>\n</metadata>\n<manifest>\n'
+	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
+	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
+	data += '<guide>\n<reference type="toc" title="Table of Contents" href="'+outhtmlbasename+'%23TOC">\n</reference>\n</guide>\n'
+	data += '</package>'
+	f.write(data)
+	f.close()
+
+	# also write out the metadata as html tags
+	# for possible later use in a conversion to xhtml
+	f = file(outmeta, 'wb')
         data = ''
         # Handle Codec and Title and then all of the remainder
         data += '<title>' + metadata['Title'] + '</title>\n'
@@ -298,8 +427,8 @@ def unpackBook(infile, outdir):
             data += tag
         f.write(data)
         f.close()
-	
-        # write out the images to the folder images
+
+	# write out the images to the folder images
 	for i in xrange(firstimg, sect.num_sections):
 		data = sect.loadSection(i)
 		imgtype = imghdr.what("dummy",data)
@@ -311,7 +440,7 @@ def unpackBook(infile, outdir):
 			
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.15"
+	print "MobiUnpack 0.16"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant"
 	if len(sys.argv) < 2:
@@ -328,24 +457,21 @@ def main(argv=sys.argv):
 		else:
 			infile = sys.argv[1]
 			outdir = os.path.splitext(infile)[0]
-
-                infileext = os.path.splitext(infile)[1].upper()
-                if infileext not in ['.MOBI', '.PRC', '.AZW']:
-                        print "Error: first parameter must be a mobipocket file."
-                        return 1
+		infileext = os.path.splitext(infile)[1].upper()
+		if infileext not in ['.MOBI', '.PRC', '.AZW']:
+			print "Error: first parameter must be a mobipocket file."
+			return 1
 	
 		try:
-                        print 'Unpacking Book ... '
+			print 'Unpacking Book ... '
 			unpackBook(infile, outdir)
-                        print 'Completed'
-                        outname = infile.rsplit('.',1)[0] + '.rawml'
-                        outname = os.path.join(outdir,outname)
-                        print 'The Mobi Raw Markup Language File can be found at: ' + outname 
-
+			print 'Completed'
+			outname = os.path.splitext(infile)[0] + '.rawml'
+			outname = os.path.join(outdir,outname)
+			print 'The Mobi Raw Markup Language File can be found at: ' + outname 
 		except ValueError, e:
 			print "Error: %s" % e
 			return 1
-
 		return 0
 
 if __name__ == "__main__":
