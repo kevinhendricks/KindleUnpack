@@ -8,6 +8,7 @@
 #  0.14 - auto flush stdout and wrapped in main, added proper return codes
 #  0.15 - added support for metadata
 #  0.16 - metadata now starting to be output as an opf file (PD)
+#  0.17 - Also created tweaked text as source for Mobipocket Creator
 
 
 class Unbuffered:
@@ -22,7 +23,7 @@ class Unbuffered:
 import sys
 sys.stdout=Unbuffered(sys.stdout)
 
-import struct, os, imghdr
+import struct, os, imghdr, re
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -234,7 +235,7 @@ def getLanguage(langID, sublangID):
 	return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
 
 def getMetaData(extheader):
-	id_map = { 
+	id_map_strings = { 
 		100 : 'Creator',
 		101 : 'Publisher',
 		102 : 'Imprint',
@@ -245,10 +246,16 @@ def getMetaData(extheader):
 		107 : 'Review',
 		108 : 'Contributor',
 		109 : 'Rights',
+		110 : 'SubjectCode',
 		111 : 'Type',
 		112 : 'Source',
 		113 : 'ASIN',
+		118 : 'Price',
+		119 : 'Currency',
 		503 : 'Updated Title',
+	}
+	id_map_values = { 
+		201 : "CoverOffset",
 	}
 	metadata = {}
 	length, num_items = struct.unpack('>LL', extheader[4:12])
@@ -259,21 +266,33 @@ def getMetaData(extheader):
 		left -= 1
 		id, size = struct.unpack('>LL', extheader[pos:pos+8])
 		content = extheader[pos + 8: pos + size]
-		pos += size
-		if id in id_map.keys():
-			name = id_map[id]
+		if id in id_map_strings.keys():
+			name = id_map_strings[id]
 			metadata[name] = content
+		elif id in id_map_values.keys():
+			name = id_map_values[id]
+			if size == 9:
+				value, = struct.unpack('B',content)
+				metadata[name] = str(value)
+			elif size == 10:
+				value, = struct.unpack('>H',content)
+				metadata[name] = str(value)
+			elif size == 12:
+				value, = struct.unpack('>L',content)
+				metadata[name] = str(value)
+		pos += size
 	return metadata
 
 
 def unpackBook(infile, outdir):
 	codec_map = {
-		1252 : 'cp-1252',
+		1252 : 'Windows-1252',
 		65001: 'utf-8',
 	}
 	if not os.path.exists(outdir):
 		os.mkdir(outdir)
 	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+	outsrc = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
 	outopf = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.opf'
 	outmeta = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '_meta.html'
 	imgdir = os.path.join(outdir, 'images')
@@ -370,17 +389,69 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
-	# write out the raw mobi html-like markup language
-	f = file(outhtml, 'wb')
+	# write out the raw mobi html-like markup languge
+	f = open(outhtml, 'wb')
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
 		data = trimTrailingDataEntries(data)
 		data = unpack(data)
 		f.write(data)
 	f.close()
+	f = open(outhtml, 'rb')
+	rawtext = f.read()
+	f.close()
+	
+	# write out the images to the folder of images, and make a note of the names
+	imgnames = []
+	for i in xrange(firstimg, sect.num_sections):
+		data = sect.loadSection(i)
+		imgtype = imghdr.what("dummy",data)
+		if imgtype is None:
+			imgnames.append("Not_an_Image")
+		else:
+			imgname = ("Image-%05d." % (1+i-firstimg))+imgtype
+			imgnames.append(imgname)
+			outimg = os.path.join(imgdir,imgnames[i-firstimg])
+			f = open(outimg, 'wb')
+			f.write(data)
+			f.close()
+
+	# process the raw text
+	# Adding anchors...
+	positions = set([])
+	link_pattern = re.compile(r'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''',
+		re.IGNORECASE)
+	for match in link_pattern.finditer(rawtext):
+		positions.add(int(match.group(1)))
+	pos = 0
+	srctext = ''
+	anchor = '<a id="filepos%d" />'
+	for end in sorted(positions):
+		if end == 0:
+			continue # something's up - can't put a link in before <html>
+		srctext += rawtext[pos:end] + (anchor % end)
+		pos = end
+	srctext += rawtext[pos:]
+	# and now put in the hrefs
+	link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''',
+		re.IGNORECASE)
+	srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
+	# remove empty anchors
+	srctext = re.sub(r"<a/>",r"", srctext)
+	# convert image references
+	image_pattern = re.compile(r'''<img([^>]*)recindex=['"]{0,1}(\d+)['"]{0,1}''', re.IGNORECASE)
+	for i in xrange(sect.num_sections-firstimg):
+		if imgnames[i] is not "Not_an_Image":
+			searchtext = '''<img([^>]*)recindex=['"]{0,1}0*%d['"]{0,1}''' % (i+1)
+			replacetext = r'''<img\1src="'''+ '''images/''' + imgnames[i] +'''"'''
+			srctext = re.sub(searchtext, replacetext, srctext)
+	#write out source text
+	f = open(outsrc, 'wb')
+	f.write(srctext)
+	f.close
 
 	# write out the metadata as an OEB 1.0 OPF file
-	outhtmlbasename = os.path.basename(outhtml)
+	outhtmlbasename = os.path.basename(outsrc)
 	f = file(outopf, 'wb')
 	data = '<?xml version="1.0" encoding="utf-8"?>\n'
 	data += '<package unique-identifier="uid">\n'
@@ -398,19 +469,35 @@ def unpackBook(infile, outdir):
 	if 'ISBN' in metadata:
 		data += '<dc:Identifier scheme="ISBN">'+metadata.get('ISBN')+'</dc:Identifier>\n'
 	if 'Subject' in metadata:
-		data += '<dc:Subject>'+metadata.get('Subject')+'</dc:Subject>\n'
+		if 'SubjectCode' in metadata:
+			data += '<dc:Subject BASICCode="'+metadata.get('SubjectCode')+'>'
+		else:
+			data += '<dc:Subject>'
+		data += metadata.get('Subject')+'</dc:Subject>\n'
+	if 'Description' in metadata:
+		data += '<dc:Description>'+metadata.get('Description')+'</dc:Description>\n'
+	if 'Published' in metadata:
+		data += '<dc:Date>'+metadata.get('Published')+'</dc:Date>\n'
 	data += '</dc-metadata>\n<x-metadata>\n'
 	if 'Codec' in metadata:
-		data += '<output encoding=">'+metadata.get('Codec')+'"></output>\n'
-	
-	for key in metadata.keys():
-		tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
-		data += tag
-		
+		data += '<output encoding="'+metadata.get('Codec')+'">\n</output>\n'
+	if 'CoverOffset' in metadata:
+		data += '<EmbeddedCover>images/'+imgnames[int(metadata.get('CoverOffset'))]+'</EmbeddedCover>\n'
+	if 'Review' in metadata:
+		data += '<Review>images/'+metadata.get('Review')+'</Review>\n'
+	if ('Price' in metadata) and ('Currency' in metadata):
+		data += '<SRP Currency="'+metadata.get('Currency')+'">'+metadata.get('Price')+'</SRP>\n'
+
 	data += '</x-metadata>\n</metadata>\n<manifest>\n'
 	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
 	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
-	data += '<guide>\n<reference type="toc" title="Table of Contents" href="'+outhtmlbasename+'%23TOC">\n</reference>\n</guide>\n'
+	
+	# get guide items from text metadata
+	guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
+	if guidematch:
+		replacetext = r'''href="'''+outhtmlbasename+r'''#filepos\1"'''
+		guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(0))
+		data += guidetext+'\n'
 	data += '</package>'
 	f.write(data)
 	f.close()
@@ -418,31 +505,20 @@ def unpackBook(infile, outdir):
 	# also write out the metadata as html tags
 	# for possible later use in a conversion to xhtml
 	f = file(outmeta, 'wb')
-        data = ''
-        # Handle Codec and Title and then all of the remainder
-        data += '<title>' + metadata['Title'] + '</title>\n'
-        data += '<meta http-equiv="content-type" content="text/html; charset=' + metadata['Codec'] + '" />\n'
-        for key in metadata.keys():
-            tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
-            data += tag
-        f.write(data)
-        f.close()
-
-	# write out the images to the folder images
-	for i in xrange(firstimg, sect.num_sections):
-		data = sect.loadSection(i)
-		imgtype = imghdr.what("dummy",data)
-		if imgtype in ['gif','jpeg','bmp']:
-			outimg = os.path.join(imgdir,("Image-%05d" % (1+i-firstimg))) + '.' + imgtype
-			f = file(outimg, 'wb')
-			f.write(data)
-			f.close()
-			
+	data = ''
+	# Handle Codec and Title and then all of the remainder
+	data += '<title>' + metadata['Title'] + '</title>\n'
+	data += '<meta http-equiv="content-type" content="text/html; charset=' + metadata['Codec'] + '" />\n'
+	for key in metadata.keys():
+		tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
+		data += tag
+	f.write(data)
+	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.16"
+	print "MobiUnpack 0.17"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-	print "  With Images Support and Other Additions by P. Durrant"
+	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	if len(sys.argv) < 2:
 		print ""
 		print "Description:"
