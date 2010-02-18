@@ -9,7 +9,7 @@
 #  0.15 - added support for metadata
 #  0.16 - metadata now starting to be output as an opf file (PD)
 #  0.17 - Also created tweaked text as source for Mobipocket Creator
-
+#  0.18 - removed raw mobi file completely but kept _meta.html file for ease of conversion
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -291,7 +291,6 @@ def unpackBook(infile, outdir):
 	}
 	if not os.path.exists(outdir):
 		os.mkdir(outdir)
-	outhtml = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
 	outsrc = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
 	outopf = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.opf'
 	outmeta = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '_meta.html'
@@ -338,8 +337,7 @@ def unpackBook(infile, outdir):
 	# add in what we have collected here
 	metadata['Title'] = title
 	metadata['Codec'] = codec
-	metadata['LangID'] = str(langid)
-	metadata['SubLangID'] = str(sublangid)
+	metadata['Language']  = getLanguage(metadata.get('LangID',0),metadata.get('SubLangID',0))
 	metadata['UniqueID'] = str(unique_id)
 
 	records, = struct.unpack_from('>H', header, 0x8)
@@ -389,17 +387,13 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
-	# write out the raw mobi html-like markup languge
-	f = open(outhtml, 'wb')
+	# get raw mobi html-like markup languge
+	rawtext = ''
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
 		data = trimTrailingDataEntries(data)
 		data = unpack(data)
-		f.write(data)
-	f.close()
-	f = open(outhtml, 'rb')
-	rawtext = f.read()
-	f.close()
+		rawtext += data
 	
 	# write out the images to the folder of images, and make a note of the names
 	imgnames = []
@@ -432,12 +426,15 @@ def unpackBook(infile, outdir):
 		srctext += rawtext[pos:end] + (anchor % end)
 		pos = end
 	srctext += rawtext[pos:]
+
 	# and now put in the hrefs
 	link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''',
 		re.IGNORECASE)
 	srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
+
 	# remove empty anchors
 	srctext = re.sub(r"<a/>",r"", srctext)
+
 	# convert image references
 	image_pattern = re.compile(r'''<img([^>]*)recindex=['"]{0,1}(\d+)['"]{0,1}''', re.IGNORECASE)
 	for i in xrange(sect.num_sections-firstimg):
@@ -542,9 +539,11 @@ def main(argv=sys.argv):
 			print 'Unpacking Book ... '
 			unpackBook(infile, outdir)
 			print 'Completed'
-			outname = os.path.splitext(infile)[0] + '.rawml'
+			
+			outname = os.path.basename(infile)
+			outname = os.path.splitext(outname)[0] + '.html'
 			outname = os.path.join(outdir,outname)
-			print 'The Mobi Raw Markup Language File can be found at: ' + outname 
+			print 'The Mobi HTML Markup Language File can be found at: ' + outname 
 		except ValueError, e:
 			print "Error: %s" % e
 			return 1
