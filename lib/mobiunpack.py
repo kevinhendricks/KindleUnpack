@@ -10,6 +10,7 @@
 #  0.16 - metadata now starting to be output as an opf file (PD)
 #  0.17 - Also created tweaked text as source for Mobipocket Creator
 #  0.18 - removed raw mobi file completely but kept _meta.html file for ease of conversion
+#  0.19 - added in metadata for ASIN, Updated Title and Rights to the opf
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -475,6 +476,8 @@ def unpackBook(infile, outdir):
 		data += '<dc:Description>'+metadata.get('Description')+'</dc:Description>\n'
 	if 'Published' in metadata:
 		data += '<dc:Date>'+metadata.get('Published')+'</dc:Date>\n'
+	if 'Rights' in metadata:
+		data += '<dc:Rights>'+metadata.get('Rights')+'</dc:Rights>\n'
 	data += '</dc-metadata>\n<x-metadata>\n'
 	if 'Codec' in metadata:
 		data += '<output encoding="'+metadata.get('Codec')+'">\n</output>\n'
@@ -484,8 +487,12 @@ def unpackBook(infile, outdir):
 		data += '<Review>images/'+metadata.get('Review')+'</Review>\n'
 	if ('Price' in metadata) and ('Currency' in metadata):
 		data += '<SRP Currency="'+metadata.get('Currency')+'">'+metadata.get('Price')+'</SRP>\n'
-
-	data += '</x-metadata>\n</metadata>\n<manifest>\n'
+	data += '</x-metadata>\n'
+	if ('ASIN' in metadata):
+		tag = '<meta name="ASIN" content="' + metadata['ASIN'] + '" />\n'
+	if ('Updated Title' in metadata):
+		tag = '<meta name="Updated Title" content="' + metadata['Updated Title'] + '" />\n'
+	data += '</metadata>\n<manifest>\n'
 	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
 	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
 	
