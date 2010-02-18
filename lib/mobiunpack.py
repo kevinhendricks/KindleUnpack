@@ -11,6 +11,7 @@
 #  0.17 - Also created tweaked text as source for Mobipocket Creator
 #  0.18 - removed raw mobi file completely but kept _meta.html file for ease of conversion
 #  0.19 - added in metadata for ASIN, Updated Title and Rights to the opf
+#  0.20 - remove _meta.html since no longer needed
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -294,7 +295,6 @@ def unpackBook(infile, outdir):
 		os.mkdir(outdir)
 	outsrc = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.html'
 	outopf = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.opf'
-	outmeta = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '_meta.html'
 	imgdir = os.path.join(outdir, 'images')
 	if not os.path.exists(imgdir):
 		os.mkdir(imgdir)
@@ -489,9 +489,9 @@ def unpackBook(infile, outdir):
 		data += '<SRP Currency="'+metadata.get('Currency')+'">'+metadata.get('Price')+'</SRP>\n'
 	data += '</x-metadata>\n'
 	if ('ASIN' in metadata):
-		tag = '<meta name="ASIN" content="' + metadata['ASIN'] + '" />\n'
+		data += '<meta name="ASIN" content="' + metadata['ASIN'] + '" />\n'
 	if ('Updated Title' in metadata):
-		tag = '<meta name="Updated Title" content="' + metadata['Updated Title'] + '" />\n'
+		data += '<meta name="Updated Title" content="' + metadata['Updated Title'] + '" />\n'
 	data += '</metadata>\n<manifest>\n'
 	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
 	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
@@ -506,21 +506,9 @@ def unpackBook(infile, outdir):
 	f.write(data)
 	f.close()
 
-	# also write out the metadata as html tags
-	# for possible later use in a conversion to xhtml
-	f = file(outmeta, 'wb')
-	data = ''
-	# Handle Codec and Title and then all of the remainder
-	data += '<title>' + metadata['Title'] + '</title>\n'
-	data += '<meta http-equiv="content-type" content="text/html; charset=' + metadata['Codec'] + '" />\n'
-	for key in metadata.keys():
-		tag = '<meta name="' + key + '" content="' + metadata[key] + '" />\n'
-		data += tag
-	f.write(data)
-	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.17"
+	print "MobiUnpack 0.20"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	if len(sys.argv) < 2:
