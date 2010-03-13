@@ -12,6 +12,8 @@
 #  0.18 - removed raw mobi file completely but kept _meta.html file for ease of conversion
 #  0.19 - added in metadata for ASIN, Updated Title and Rights to the opf
 #  0.20 - remove _meta.html since no longer needed
+#  0.21 - Fixed some typos in the opf output, and also updated handling
+#         of test for trailing data/multibyte characters
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -348,7 +350,7 @@ def unpackBook(infile, outdir):
 	if sect.ident == 'BOOKMOBI':
 		mobi_length, = struct.unpack_from('>L', header, 0x14)
 		mobi_version, = struct.unpack_from('>L', header, 0x68)
-		if (mobi_length >= 0xE8) and (mobi_version > 5):
+		if (mobi_length >= 0xE4) and (mobi_version >= 5):
 			flags, = struct.unpack_from('>H', header, 0xF2)
 			multibyte = flags & 1
 			while flags > 1:
@@ -468,7 +470,7 @@ def unpackBook(infile, outdir):
 		data += '<dc:Identifier scheme="ISBN">'+metadata.get('ISBN')+'</dc:Identifier>\n'
 	if 'Subject' in metadata:
 		if 'SubjectCode' in metadata:
-			data += '<dc:Subject BASICCode="'+metadata.get('SubjectCode')+'>'
+			data += '<dc:Subject BASICCode="'+metadata.get('SubjectCode')+'">'
 		else:
 			data += '<dc:Subject>'
 		data += metadata.get('Subject')+'</dc:Subject>\n'
@@ -484,7 +486,7 @@ def unpackBook(infile, outdir):
 	if 'CoverOffset' in metadata:
 		data += '<EmbeddedCover>images/'+imgnames[int(metadata.get('CoverOffset'))]+'</EmbeddedCover>\n'
 	if 'Review' in metadata:
-		data += '<Review>images/'+metadata.get('Review')+'</Review>\n'
+		data += '<Review>'+metadata.get('Review')+'</Review>\n'
 	if ('Price' in metadata) and ('Currency' in metadata):
 		data += '<SRP Currency="'+metadata.get('Currency')+'">'+metadata.get('Price')+'</SRP>\n'
 	data += '</x-metadata>\n'
@@ -506,9 +508,8 @@ def unpackBook(infile, outdir):
 	f.write(data)
 	f.close()
 
-
 def main(argv=sys.argv):
-	print "MobiUnpack 0.20"
+	print "MobiUnpack 0.21"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	if len(sys.argv) < 2:
