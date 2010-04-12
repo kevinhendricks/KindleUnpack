@@ -14,6 +14,7 @@
 #  0.20 - remove _meta.html since no longer needed
 #  0.21 - Fixed some typos in the opf output, and also updated handling
 #         of test for trailing data/multibyte characters
+#  0.22 - Fixed problem with > 9 images
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -397,8 +398,15 @@ def unpackBook(infile, outdir):
 		data = trimTrailingDataEntries(data)
 		data = unpack(data)
 		rawtext += data
+		
+	#write out raw text
+	#outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+	#f = open(outraw, 'wb')
+	#f.write(rawtext)
+	#f.close
 	
 	# write out the images to the folder of images, and make a note of the names
+	# we really only need the names to get the image type right.
 	imgnames = []
 	for i in xrange(firstimg, sect.num_sections):
 		data = sect.loadSection(i)
@@ -438,13 +446,19 @@ def unpackBook(infile, outdir):
 	# remove empty anchors
 	srctext = re.sub(r"<a/>",r"", srctext)
 
+	#write out rare text
+	#outrare = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rareml'
+	#f = open(outrare, 'wb')
+	#f.write(srctext)
+	#f.close
+
 	# convert image references
-	image_pattern = re.compile(r'''<img([^>]*)recindex=['"]{0,1}(\d+)['"]{0,1}''', re.IGNORECASE)
 	for i in xrange(sect.num_sections-firstimg):
 		if imgnames[i] is not "Not_an_Image":
-			searchtext = '''<img([^>]*)recindex=['"]{0,1}0*%d['"]{0,1}''' % (i+1)
+			searchtext = '''<img([^>]*)recindex=['"]{0,1}%05d['"]{0,1}''' % (i+1)
 			replacetext = r'''<img\1src="'''+ '''images/''' + imgnames[i] +'''"'''
 			srctext = re.sub(searchtext, replacetext, srctext)
+
 	#write out source text
 	f = open(outsrc, 'wb')
 	f.write(srctext)
@@ -509,7 +523,7 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.21"
+	print "MobiUnpack 0.22"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	if len(sys.argv) < 2:
