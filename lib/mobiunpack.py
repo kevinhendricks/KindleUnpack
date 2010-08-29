@@ -15,6 +15,7 @@
 #  0.21 - Fixed some typos in the opf output, and also updated handling
 #         of test for trailing data/multibyte characters
 #  0.22 - Fixed problem with > 9 images
+#  0.23 - Now output Start guide item
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -260,6 +261,7 @@ def getMetaData(extheader):
 		503 : 'Updated Title',
 	}
 	id_map_values = { 
+		116 : 'StartOffset',
 		201 : "CoverOffset",
 	}
 	metadata = {}
@@ -512,12 +514,20 @@ def unpackBook(infile, outdir):
 	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
 	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
 	
-	# get guide items from text metadata
+	# get guide items from metadata
+	metaguidetext = ''
+	if 'StartOffset' in metadata:
+		metaguidetext += '<reference title="Start" type="text" href="'+outhtmlbasename+'#filepos'+metadata.get('StartOffset')+'" />'
+	
+	# get guide items from text
+	guidetext =''
 	guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
 	if guidematch:
 		replacetext = r'''href="'''+outhtmlbasename+r'''#filepos\1"'''
 		guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(0))
-		data += guidetext+'\n'
+		guidetext = guidetext[7:-8]
+	data += '<guide>\n'+metaguidetext+'\n'+guidetext+'\n'+'</guide>\n'
+	
 	data += '</package>'
 	f.write(data)
 	f.close()
