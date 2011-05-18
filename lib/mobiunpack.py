@@ -16,6 +16,7 @@
 #         of test for trailing data/multibyte characters
 #  0.22 - Fixed problem with > 9 images
 #  0.23 - Now output Start guide item
+#  0.24 - set firstimg value for 'TEXtREAd'
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -310,7 +311,11 @@ def unpackBook(infile, outdir):
 
 	header = sect.loadSection(0)
 
-	firstimg, = struct.unpack_from('>L', header, 0x6C)
+	if sect.ident != 'TEXtREAd':
+		firstimg, = struct.unpack_from('>L', header, 0x6C)
+	else:
+		records, = struct.unpack_from('>H', header, 0x8)
+		firstimg = records + 1
 
 	crypto_type, = struct.unpack_from('>H', header, 0xC)
 	if crypto_type != 0:
@@ -402,10 +407,10 @@ def unpackBook(infile, outdir):
 		rawtext += data
 		
 	#write out raw text
-	#outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
-	#f = open(outraw, 'wb')
-	#f.write(rawtext)
-	#f.close
+	# outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+	# f = open(outraw, 'wb')
+	# f.write(rawtext)
+	# f.close
 	
 	# write out the images to the folder of images, and make a note of the names
 	# we really only need the names to get the image type right.
@@ -533,7 +538,7 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.22"
+	print "MobiUnpack 0.24"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	if len(sys.argv) < 2:
