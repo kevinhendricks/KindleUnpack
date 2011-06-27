@@ -17,6 +17,18 @@
 #  0.22 - Fixed problem with > 9 images
 #  0.23 - Now output Start guide item
 #  0.24 - set firstimg value for 'TEXtREAd'
+#  0.25 - Now added character set metadata to html file for utf-8 files.
+#  0.26 - Dictionary support added. Image handling speed improved. For huge files create temp files to speed up decoding.
+#         Language decoding fixed. Metadata is now converted to utf-8 when written to opf file.
+
+DEBUG = False
+""" Set to True to print debug information. """
+
+WRITE_RAW_DATA = False
+""" Set to True to create additional files with raw data for debugging/reverse engineering. """
+
+HUGE_FILE_SIZE = 5 * 1024 * 1024
+""" If the size of the uncompressed raw html exceeds this limit, use temporary files to speed up processing. """
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -30,7 +42,7 @@ class Unbuffered:
 import sys
 sys.stdout=Unbuffered(sys.stdout)
 
-import struct, os, imghdr, re
+import array, struct, os, re
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -58,7 +70,7 @@ class PalmdocReader:
 					if (m > n):
 						o += o[-m:n-m]
 					else:
-						for z in xrange(n):
+						for _ in xrange(n):
 							o += o[-m]
 		return o
 
@@ -155,36 +167,36 @@ def getLanguage(langID, sublangID):
 	mobilangdict = {
 		54 : {0 : 'af'}, # Afrikaans
 		28 : {0 : 'sq'}, # Albanian
-		1 : {0 : 'ar' , 20 : 'ar-dz' , 60 : 'ar-bh' , 12 : 'ar-eg' , 44 : 'ar-jo' , 52 : 'ar-kw' , 48 : 'ar-lb' , 24 : 'ar-ma' , 32 : 'ar-om' , 64 : 'ar-qa' , 4 : 'ar-sa' , 40 : 'ar-sy' , 28 : 'ar-tn' , 56 : 'ar-ae' , 36 : 'ar-ye'}, # Arabic,  Arabic (Algeria),  Arabic (Bahrain),  Arabic (Egypt),  Arabic (Jordan),  Arabic (Kuwait),  Arabic (Lebanon),  Arabic (Morocco),  Arabic (Oman),  Arabic (Qatar),  Arabic (Saudi Arabia),  Arabic (Syria),  Arabic (Tunisia),  Arabic (United Arab Emirates),  Arabic (Yemen)
+		 1 : {0 : 'ar' , 5 : 'ar-dz' , 15 : 'ar-bh' , 3 : 'ar-eg' , 2 : 'ar-iq',  11 : 'ar-jo' , 13 : 'ar-kw' , 12 : 'ar-lb' , 4: 'ar-ly', 6 : 'ar-ma' , 8 : 'ar-om' , 16 : 'ar-qa' , 1 : 'ar-sa' , 10 : 'ar-sy' , 7 : 'ar-tn' , 14 : 'ar-ae' , 9 : 'ar-ye'}, # Arabic,  Arabic (Algeria),  Arabic (Bahrain),  Arabic (Egypt),  Arabic (Iraq), Arabic (Jordan),  Arabic (Kuwait),  Arabic (Lebanon),  Arabic (Libya), Arabic (Morocco),  Arabic (Oman),  Arabic (Qatar),  Arabic (Saudi Arabia),  Arabic (Syria),  Arabic (Tunisia),  Arabic (United Arab Emirates),  Arabic (Yemen)
 		43 : {0 : 'hy'}, # Armenian
 		77 : {0 : 'as'}, # Assamese
 		44 : {0 : 'az'}, # "Azeri (IANA: Azerbaijani)
 		45 : {0 : 'eu'}, # Basque
 		35 : {0 : 'be'}, # Belarusian
 		69 : {0 : 'bn'}, # Bengali
-		2 : {0 : 'bg'}, # Bulgarian
-		3 : {0 : 'ca'}, # Catalan
-		4 : {0 : 'zh' , 12 : 'zh-hk' , 8 : 'zh-cn' , 16 : 'zh-sg' , 4 : 'zh-tw'}, # Chinese,  Chinese (Hong Kong),  Chinese (PRC),  Chinese (Singapore),  Chinese (Taiwan)
+		 2 : {0 : 'bg'}, # Bulgarian
+		 3 : {0 : 'ca'}, # Catalan
+		 4 : {0 : 'zh' , 3 : 'zh-hk' , 2 : 'zh-cn' , 4 : 'zh-sg' , 1 : 'zh-tw'}, # Chinese,  Chinese (Hong Kong),  Chinese (PRC),  Chinese (Singapore),  Chinese (Taiwan)
 		26 : {0 : 'hr'}, # Croatian
-		5 : {0 : 'cs'}, # Czech
-		6 : {0 : 'da'}, # Danish
-		19 : {0 : 'nl' , 8 : 'nl-be'}, # Dutch / Flemish,  Dutch (Belgium)
-		9 : {0 : 'en' , 12 : 'en-au' , 40 : 'en-bz' , 16 : 'en-ca' , 24 : 'en-ie' , 32 : 'en-jm' , 20 : 'en-nz' , 52 : 'en-ph' , 28 : 'en-za' , 44 : 'en-tt' , 8 : 'en-gb', 2 : 'en-gb' , 4 : 'en-us' , 48 : 'en-zw'}, # English,  English (Australia),  English (Belize),  English (Canada),  English (Ireland),  English (Jamaica),  English (New Zealand),  English (Philippines),  English (South Africa),  English (Trinidad),  English (United Kingdom),  English (United States),  English (Zimbabwe)
+		 5 : {0 : 'cs'}, # Czech
+		 6 : {0 : 'da'}, # Danish
+		19 : {1 : 'nl' , 2 : 'nl-be'}, # Dutch / Flemish,  Dutch (Belgium)
+ 		 9 : {1 : 'en' , 3 : 'en-au' , 40 : 'en-bz' , 4 : 'en-ca' , 6 : 'en-ie' , 8 : 'en-jm' , 5 : 'en-nz' , 13 : 'en-ph' , 7 : 'en-za' , 11 : 'en-tt' , 2 : 'en-gb', 1 : 'en-us' , 12 : 'en-zw'}, # English,  English (Australia),  English (Belize),  English (Canada),  English (Ireland),  English (Jamaica),  English (New Zealand),  English (Philippines),  English (South Africa),  English (Trinidad),  English (United Kingdom),  English (United States),  English (Zimbabwe)
 		37 : {0 : 'et'}, # Estonian
 		56 : {0 : 'fo'}, # Faroese
 		41 : {0 : 'fa'}, # Farsi / Persian
 		11 : {0 : 'fi'}, # Finnish
-		12 : {0 : 'fr' , 4 : 'fr' , 8 : 'fr-be' , 12 : 'fr-ca' , 20 : 'fr-lu' , 24 : 'fr-mc' , 16 : 'fr-ch'}, # French,  French (Mobipocket bug?),  French (Belgium),  French (Canada),  French (Luxembourg),  French (Monaco),  French (Switzerland)
+		12 : {1 : 'fr' , 2 : 'fr-be' , 3 : 'fr-ca' , 5 : 'fr-lu' , 6 : 'fr-mc' , 4 : 'fr-ch'}, # French,  French (Belgium),  French (Canada),  French (Luxembourg),  French (Monaco),  French (Switzerland)
 		55 : {0 : 'ka'}, # Georgian
-		7 : {0 : 'de' , 12 : 'de-at' , 20 : 'de-li' , 16 : 'de-lu' , 8 : 'de-ch'}, # German,  German (Austria),  German (Liechtenstein),  German (Luxembourg),  German (Switzerland)
-		8 : {0 : 'el'}, # Greek, Modern (1453-)
+		 7 : {1 : 'de' , 3 : 'de-at' , 5 : 'de-li' , 4 : 'de-lu' , 2 : 'de-ch'}, # German,  German (Austria),  German (Liechtenstein),  German (Luxembourg),  German (Switzerland)
+		 8 : {0 : 'el'}, # Greek, Modern (1453-)
 		71 : {0 : 'gu'}, # Gujarati
 		13 : {0 : 'he'}, # Hebrew (also code 'iw'?)
 		57 : {0 : 'hi'}, # Hindi
 		14 : {0 : 'hu'}, # Hungarian
 		15 : {0 : 'is'}, # Icelandic
 		33 : {0 : 'id'}, # Indonesian
-		16 : {0 : 'it' , 4 : 'it' , 8 : 'it-ch'}, # Italian,  Italian (Mobipocket bug?),  Italian (Switzerland)
+		16 : {1 : 'it' , 2 : 'it-ch'}, # Italian,  Italian (Switzerland)
 		17 : {0 : 'ja'}, # Japanese
 		75 : {0 : 'kn'}, # Kannada
 		63 : {0 : 'kk'}, # Kazakh
@@ -201,7 +213,7 @@ def getLanguage(langID, sublangID):
 		20 : {0 : 'no'}, # Norwegian
 		72 : {0 : 'or'}, # Oriya
 		21 : {0 : 'pl'}, # Polish
-		22 : {0 : 'pt' , 8 : 'pt' , 4 : 'pt-br'}, # Portuguese,  Portuguese (Mobipocket bug?),  Portuguese (Brazil)
+		22 : {2 : 'pt' , 1 : 'pt-br'}, # Portuguese,  Portuguese (Brazil)
 		70 : {0 : 'pa'}, # Punjabi
 		23 : {0 : 'rm'}, # "Rhaeto-Romanic" (IANA: Romansh)
 		24 : {0 : 'ro'}, # Romanian
@@ -210,7 +222,7 @@ def getLanguage(langID, sublangID):
 								  # IANA code for "Northern Sami" is 'se'
 								  # 'SZ' is the IANA region code for Swaziland
 		79 : {0 : 'sa'}, # Sanskrit
-		26 : {12 : 'sr'}, # Serbian -- Mobipocket Cyrillic/Latin distinction broken
+		26 : {3 : 'sr'}, # Serbian
 		27 : {0 : 'sk'}, # Slovak
 		36 : {0 : 'sl'}, # Slovenian
 		46 : {0 : 'sb'}, # "Sorbian" (not an IANA language code)
@@ -233,7 +245,7 @@ def getLanguage(langID, sublangID):
 		31 : {0 : 'tr'}, # Turkish
 		34 : {0 : 'uk'}, # Ukrainian
 		32 : {0 : 'ur'}, # Urdu
-		67 : {0 : 'uz' , 8 : 'uz'}, # Uzbek,  Uzbek (Mobipocket bug?)
+		67 : {2 : 'uz'}, # Uzbek
 		42 : {0 : 'vi'}, # Vietnamese
 		52 : {0 : 'xh'}, # Xhosa
 		53 : {0 : 'zu'}, # Zulu
@@ -241,7 +253,7 @@ def getLanguage(langID, sublangID):
 
 	return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
 
-def getMetaData(extheader):
+def getMetaData(codec, extheader):
 	id_map_strings = { 
 		100 : 'Creator',
 		101 : 'Publisher',
@@ -266,7 +278,7 @@ def getMetaData(extheader):
 		201 : "CoverOffset",
 	}
 	metadata = {}
-	length, num_items = struct.unpack('>LL', extheader[4:12])
+	_length, num_items = struct.unpack('>LL', extheader[4:12])
 	extheader = extheader[12:]
 	pos = 0
 	left = num_items
@@ -276,7 +288,7 @@ def getMetaData(extheader):
 		content = extheader[pos + 8: pos + size]
 		if id in id_map_strings.keys():
 			name = id_map_strings[id]
-			metadata[name] = content
+			metadata[name] = unicode(content, codec).encode("utf-8")
 		elif id in id_map_values.keys():
 			name = id_map_values[id]
 			if size == 9:
@@ -291,10 +303,316 @@ def getMetaData(extheader):
 		pos += size
 	return metadata
 
+def getSizeOfTrailingDataEntry(data):
+	num = 0
+	for v in data[-4:]:
+		if ord(v) & 0x80:
+			num = 0
+		num = (num << 7) | (ord(v) & 0x7f)
+	return num
+
+def getVariableWidthValue(data, offset):
+	'''
+	Decode variable width value from given bytes.
+	
+	@param data: The bytes to decode.
+	@param offset: The start offset into data.
+	@return: Tuple of consumed bytes count and decoded value.
+	'''
+	value = 0
+	consumed = 0
+	finished = False
+	while not finished:
+		v = data[offset + consumed]
+		consumed += 1
+		if ord(v) & 0x80:
+			finished = True
+		value = (value << 7) | (ord(v) & 0x7f)
+	return consumed, value
+
+def toHex(byteList):
+	'''
+	Convert list of characters into a string of hex values.
+	
+	@param byteList: List of characters.
+	@return: String with the character hex values separated by spaces.
+	'''
+	return " ".join([hex(ord(c))[2:].zfill(2) for c in byteList])
+
+def toBin(value, bits = 8):
+	'''
+	Convert integer value to binary string representation.
+	
+	@param value: The integer value.
+	@param bits: The number of bits for the binary string (defaults to 8).
+	@return: String with the binary representation.
+	'''
+	return "".join(map(lambda y:str((value>>y)&1), range(bits-1, -1, -1)))
+
+def countSetBits(value, bits = 8):
+	'''
+	Count the set bits in the given value.
+	
+	@param value: Integer value.
+	@param bits: The number of bits of the input value (defaults to 8).
+	@return: Number of set bits.
+	'''
+	count = 0
+	for _ in range(bits):
+		if value & 0x01 == 0x01:
+			count += 1
+		value = value >> 1
+	return count
+
+def readTagSection(start, data):
+	'''
+	Read tag section from given data.
+	
+	@param start: The start position in the data.
+	@param data: The data to process.
+	@return: Tuple of control byte count and list of tag tuples.
+	'''
+	tags = []
+	assert data[start:start+4] == "TAGX"
+	firstEntryOffset, = struct.unpack_from('>L', data, start + 0x04)
+	controlByteCount, = struct.unpack_from('>L', data, start + 0x08)
+
+	# Skip the first 12 bytes already read above.
+	for i in range(12, firstEntryOffset, 4):
+		pos = start + i
+		tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
+	return controlByteCount, tags
+
+def getInflectionGroups(mainEntry, controlByteCount, tagTable, data, inflectionNames, groupList):
+	'''
+	Create string which contains the inflection groups with inflection rules as mobipocket tags.
+	
+	@param mainEntry: The word to inflect.
+	@param controlByteCount: The number of control bytes.
+	@param tagTable: The tag table.
+	@param data: The inflection index data.
+	@param inflectionNames: The inflection rule name data.
+	@param groupList: The list of inflection groups to process.
+	@return: String with inflection groups and rules or empty string if required tags are not available.
+	'''
+	result = ""
+	idxtPos, = struct.unpack_from('>L', data, 0x14)
+	entryCount, = struct.unpack_from('>L', data, 0x18)
+	for value in groupList:
+		offset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * value))
+		if value + 1 < entryCount:
+			nextOffset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * (value + 1)))
+		else:
+			nextOffset = None
+
+		# First byte seems to be always 0x00 and must be skipped.
+		assert ord(data[offset]) == 0x00
+		tagMap = getTagMap(controlByteCount, tagTable, data, offset + 1, nextOffset)
+
+		# Make sure that the required tags are available.
+		if 0x05 not in tagMap:
+			print "Required tag 0x05 not found in tagMap"
+			return ""
+		if 0x1a not in tagMap:
+			print "Required tag 0x1a not found in tagMap"
+			return ""
+
+		result += "<idx:infl>"
+
+		for i in range(len(tagMap[0x05])):
+			# Get name of inflection rule.
+			value = tagMap[0x05][i]
+			consumed, textLength = getVariableWidthValue(inflectionNames, value)
+			inflectionName = inflectionNames[value+consumed:value+consumed+textLength]
+
+			# Get and apply inflection rule.
+			value = tagMap[0x1a][i]
+			offset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * value))
+			textLength = ord(data[offset])
+			inflection = applyInflectionRule(mainEntry, data, offset+1, offset+1+textLength)
+			if inflection != None:
+				result += '  <idx:iform name="%s" value="%s"/>' % (inflectionName, inflection)
+
+		result += "</idx:infl>"
+	return result
+
+def hasTag(tagTable, tag):
+	'''
+	Test if tag table contains given tag.
+	
+	@param tagTable: The tag table.
+	@param tag: The tag to search.
+	@return: True if tag table contains given tag; False otherwise.
+	'''
+	for currentTag, _, _, _ in tagTable:
+		if currentTag == tag:
+			return True
+	return False
+
+def getTagMap(controlByteCount, tagTable, entryData, startPos, endPos):
+	'''
+	Create a map of tags and values from the given byte section.
+	
+	@param controlByteCount: The number of control bytes.
+	@param tagTable: The tag table.
+	@param entryData: The data to process.
+	@param startPos: The starting position in entryData.
+	@param endPos: The end position in entryData or None if it is unknown.
+	@return: Hashmap of tag and list of values.
+	'''
+	tags = []
+	tagHashMap = {}
+	controlByteIndex = 0
+	dataStart = startPos + controlByteCount
+
+	for tag, valuesPerEntry, mask, endFlag in tagTable:
+		if endFlag == 0x01:
+			controlByteIndex += 1
+			continue
+
+		value = ord(entryData[startPos + controlByteIndex]) & mask
+
+		if value != 0:
+			if value == mask:
+				if countSetBits(mask) > 1:
+					# If all bits of masked value are set and the mask has more than one bit, a variable width value
+					# will follow after the control bytes which defines the length of bytes (NOT the value count!)
+					# which will contain the corresponding variable width values.
+					consumed, value = getVariableWidthValue(entryData, dataStart)
+					dataStart += consumed
+					tags.append((tag, None, value, valuesPerEntry))
+				else:
+					tags.append((tag, 1, None, valuesPerEntry))
+			else:
+				# Shift bits to get the masked value.
+				while mask & 0x01 == 0:
+					mask = mask >> 1
+					value = value >> 1
+				tags.append((tag, value, None, valuesPerEntry))
+
+	for tag, valueCount, valueBytes, valuesPerEntry in tags:
+		values = []
+		if valueCount != None:
+			# Read valueCount * valuesPerEntry variable width values.
+			for _ in range(valueCount):
+				for _ in range(valuesPerEntry):
+					consumed, data = getVariableWidthValue(entryData, dataStart)
+					dataStart += consumed
+					values.append(data)
+		else:
+			# Convert valueBytes to variable width values.
+			totalConsumed = 0
+			while totalConsumed < valueBytes:
+				# Does this work for valuesPerEntry != 1?
+				consumed, data = getVariableWidthValue(entryData, dataStart)
+				dataStart += consumed
+				totalConsumed += consumed
+				values.append(data)
+			if totalConsumed != valueBytes:
+				print "Error: Should consume %s bytes, but consumed %s" % (valueBytes, totalConsumed)
+		tagHashMap[tag] = values
+		
+	# Test that all bytes have been processed if endPos is given.
+	if endPos is not None and dataStart != endPos:
+		# The last entry might have some zero padding bytes, so complain only if non zero bytes are left.
+		for char in entryData[dataStart:endPos]:
+			if char != chr(0x00):
+				print "Warning: There are unprocessed index bytes left: %s" % toHex(entryData[dataStart:endPos])
+				if DEBUG:
+					print "controlByteCount: %s" % controlByteCount
+					print "tagTable: %s" % tagTable
+					print "data: %s" % toHex(entryData[startPos:endPos])
+					print "tagHashMap: %s" % tagHashMap
+				break
+
+	return tagHashMap
+
+def applyInflectionRule(mainEntry, inflectionRuleData, start, end):
+	'''
+	Apply inflection rule.
+	
+	@param mainEntry: The word to inflect.
+	@param inflectionRuleData: The inflection rules.
+	@param start: The start position of the inflection rule to use.
+	@param end: The end position of the inflection rule to use.
+	@return: The string with the inflected word or None if an error occurs.
+	'''
+	mode = -1
+	byteArray = array.array("c", mainEntry)
+	position = len(byteArray)
+	for charOffset in range(start, end):
+		char = inflectionRuleData[charOffset]
+		byte = ord(char)
+		if byte >= 0x0a and byte <= 0x13:
+			# Move cursor backwards
+			offset = byte - 0x0a
+			if mode not in [0x02, 0x03]:
+				mode = 0x02
+				position = len(byteArray)
+			position -= offset
+		elif byte > 0x13:
+			if mode == -1:
+				print "Error: Unexpected first byte %i of inflection rule" % byte
+				return None
+			elif position == -1:
+				print "Error: Unexpected first byte %i of inflection rule" % byte
+				return None
+			else:
+				if mode == 0x01:
+					# Insert at word start
+					byteArray.insert(position, char)
+					position += 1
+				elif mode == 0x02:
+					# Insert at word end
+					byteArray.insert(position, char)
+				elif mode == 0x03:
+					# Delete at word end
+					position -= 1
+					deleted = byteArray.pop(position)
+					if deleted != char:
+						if DEBUG:
+							print "0x03: %s %s %s %s" % (mainEntry, toHex(inflectionRuleData[start:end]), char, deleted)
+						print "Error: Delete operation of inflection rule failed"
+						return None
+				elif mode == 0x04:
+					# Delete at word start
+					deleted = byteArray.pop(position)
+					if deleted != char:
+						if DEBUG:
+							print "0x03: %s %s %s %s" % (mainEntry, toHex(inflectionRuleData[start:end]), char, deleted)
+						print "Error: Delete operation of inflection rule failed"
+						return None
+				else:
+					print "Error: Inflection rule mode %x is not implemented" % mode
+					return None
+		elif byte == 0x01:
+			# Insert at word start
+			if mode not in [0x01, 0x04]:
+				position = 0
+			mode = byte
+		elif byte == 0x02:
+			# Insert at word end
+			if mode not in [0x02, 0x03]:
+				position = len(byteArray)
+			mode = byte
+		elif byte == 0x03:
+			# Delete at word end
+			if mode not in [0x02, 0x03]:
+				position = len(byteArray)
+			mode = byte
+		elif byte == 0x04:
+			# Delete at word start
+			if mode not in [0x01, 0x04]:
+				position = 0
+			mode = byte
+		else:
+			print "Error: Inflection rule mode %x is not implemented" % byte
+			return None
+	return byteArray.tostring()
 
 def unpackBook(infile, outdir):
 	codec_map = {
-		1252 : 'Windows-1252',
+		1252 : 'windows-1252',
 		65001: 'utf-8',
 	}
 	if not os.path.exists(outdir):
@@ -311,10 +629,19 @@ def unpackBook(infile, outdir):
 
 	header = sect.loadSection(0)
 
+	#write out raw header
+	if WRITE_RAW_DATA:
+		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawhdr'
+		f = open(outraw, 'wb')
+		f.write(header)
+		f.close()
+
 	if sect.ident != 'TEXtREAd':
+		firstidx, = struct.unpack_from('>L', header, 0x50)
 		firstimg, = struct.unpack_from('>L', header, 0x6C)
 	else:
 		records, = struct.unpack_from('>H', header, 0x8)
+		firstidx = 0xFFFFFFFF
 		firstimg = records + 1
 
 	crypto_type, = struct.unpack_from('>H', header, 0xC)
@@ -323,9 +650,10 @@ def unpackBook(infile, outdir):
 
 	# get length of this header
 	length, type, codepage, unique_id, version = struct.unpack('>LLLLL', header[20:40])
+	print "Mobipocket version %s" % version
 
 	# convert the codepage to codec string
-	codec = 'cp-1252'
+	codec = 'windows-1252'
 	if codepage in codec_map.keys() :
 		codec = codec_map[codepage]
 
@@ -334,25 +662,39 @@ def unpackBook(infile, outdir):
 	tend = toff + tlen
 	title = header[toff:tend]
 
-	# get the language code
-	langcode = struct.unpack('!L', header[0x5c:0x60])[0]
-	langid = langcode & 0xFF
-	sublangid = (langcode >> 10) & 0xFF
-
 	# if exth region exists then parse it for the metadata
 	exth_flag, = struct.unpack('>L', header[0x80:0x84])
 	metadata = {}
 	if exth_flag & 0x40:
-		metadata = getMetaData(header[16 + length:])
+		metadata = getMetaData(codec, header[16 + length:])
 
-	# add in what we have collected here
-	metadata['Title'] = title
+	# get the language code
+	langcode = struct.unpack('!L', header[0x5c:0x60])[0]
+	langid = langcode & 0xFF
+	sublangid = (langcode >> 10) & 0xFF
+	metadata['Language']  = getLanguage(langid, sublangid)
+
+	langcode = struct.unpack('!L', header[0x60:0x64])[0]
+	langid = langcode & 0xFF
+	sublangid = (langcode >> 10) & 0xFF
+	if langid != 0:
+		metadata['DictInLanguage'] = getLanguage(langid, sublangid)
+
+	langcode = struct.unpack('!L', header[0x64:0x68])[0]
+	langid = langcode & 0xFF
+	sublangid = (langcode >> 10) & 0xFF
+	if langid != 0:
+		metadata['DictOutLanguage'] = getLanguage(langid, sublangid)
+
+	metadata['Title'] = unicode(title, codec).encode("utf-8")
 	metadata['Codec'] = codec
-	metadata['Language']  = getLanguage(metadata.get('LangID',0),metadata.get('SubLangID',0))
 	metadata['UniqueID'] = str(unique_id)
 
+	rawSize, = struct.unpack_from('>L', header, 0x4)
 	records, = struct.unpack_from('>H', header, 0x8)
 
+	hugeFile = True if rawSize > HUGE_FILE_SIZE else False
+		
 	multibyte = 0
 	trailers = 0
 	if sect.ident == 'BOOKMOBI':
@@ -368,6 +710,7 @@ def unpackBook(infile, outdir):
 
 	compression, = struct.unpack_from('>H', header, 0x0)
 	if compression == 0x4448:
+		print "Huffdic compression"
 		reader = HuffcdicReader()
 		huffoff, huffnum = struct.unpack_from('>LL', header, 0x70)
 		reader.loadHuff(sect.loadSection(huffoff))
@@ -375,22 +718,16 @@ def unpackBook(infile, outdir):
 			reader.loadCdic(sect.loadSection(huffoff+i))
 		unpack = reader.unpack
 	elif compression == 2:
+		print "Palmdoc compression"
 		unpack = PalmdocReader().unpack
 	elif compression == 1:
+		print "No compression"
 		unpack = UncompressedReader().unpack
 	else:
 		raise ValueError('invalid compression type: 0x%4x' % compression)
 
-	def getSizeOfTrailingDataEntry(data):
-		num = 0
-		for v in data[-4:]:
-			if ord(v) & 0x80:
-				num = 0
-			num = (num << 7) | (ord(v) & 0x7f)
-		return num
-
 	def trimTrailingDataEntries(data):
-		for x in xrange(trailers):
+		for _ in xrange(trailers):
 			num = getSizeOfTrailingDataEntry(data)
 			data = data[:-num]
 		if multibyte:
@@ -398,80 +735,213 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
-	# get raw mobi html-like markup languge
+	#get raw mobi html-like markup languge
+	print "Unpack raw html"
 	rawtext = ''
+	if hugeFile:
+		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+		f = open(outraw, 'wb')
 	for i in xrange(records):
 		data = sect.loadSection(1+i)
 		data = trimTrailingDataEntries(data)
 		data = unpack(data)
-		rawtext += data
-		
-	#write out raw text
-	# outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
-	# f = open(outraw, 'wb')
-	# f.write(rawtext)
-	# f.close
-	
-	# write out the images to the folder of images, and make a note of the names
-	# we really only need the names to get the image type right.
-	imgnames = []
-	for i in xrange(firstimg, sect.num_sections):
-		data = sect.loadSection(i)
-		imgtype = imghdr.what("dummy",data)
-		if imgtype is None:
-			imgnames.append("Not_an_Image")
-		else:
-			imgname = ("Image-%05d." % (1+i-firstimg))+imgtype
-			imgnames.append(imgname)
-			outimg = os.path.join(imgdir,imgnames[i-firstimg])
-			f = open(outimg, 'wb')
+		if hugeFile:
 			f.write(data)
-			f.close()
+		else:
+			rawtext += data
+
+	if hugeFile:
+		f.close()
+		f = open(outraw, 'rb')
+		rawtext = f.read()
+		f.close()
+		if not WRITE_RAW_DATA:
+			os.unlink(outraw)
+			
+	#write out raw text
+	if WRITE_RAW_DATA and not hugeFile:
+		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+		f = open(outraw, 'wb')
+		f.write(rawtext)
+		f.close()
+
+	#write out raw index sections
+	if WRITE_RAW_DATA:
+		if firstidx != 0xffffffff:
+			for i in xrange(firstidx, firstimg):
+				data = sect.loadSection(i)
+				outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + ('.%03x.rawidx' % i)
+				f = open(outraw, 'wb')
+				f.write(data)
+				f.close()
+
+	positionMap = {}
+
+	metaOrthIndex, = struct.unpack_from('>L', header, 0x28)
+	metaInflIndex, = struct.unpack_from('>L', header, 0x2C)
+
+	decodeInflection = True
+	if metaOrthIndex != 0xFFFFFFFF:
+		print "Document contains orthographic index, handle as dictionary"
+		if metaInflIndex == 0xFFFFFFFF:
+			decodeInflection = False
+		else:
+			metaInflIndexData = sect.loadSection(metaInflIndex)
+			metaIndexCount, = struct.unpack_from('>L', metaInflIndexData, 0x18)
+			if metaIndexCount != 1:
+				print "Error: Dictionary contains multiple inflection index sections, which is not yet supported"
+				decodeInflection = False
+			inflIndexData = sect.loadSection(metaInflIndex + 1)
+			inflNameData = sect.loadSection(metaInflIndex + 1 + metaIndexCount)
+			tagSectionStart, = struct.unpack_from('>L', metaInflIndexData, 0x04)
+			inflectionControlByteCount, inflectionTagTable = readTagSection(tagSectionStart, metaInflIndexData)
+			if DEBUG:
+				print "inflectionTagTable: %s" % inflectionTagTable
+			if hasTag(inflectionTagTable, 0x07):
+				print "Error: Dictionary uses obsolete inflection rule scheme which is not yet supported"
+				decodeInflection = False
+
+		data = sect.loadSection(metaOrthIndex)
+		tagSectionStart, = struct.unpack_from('>L', data, 0x04)
+		controlByteCount, tagTable = readTagSection(tagSectionStart, data)
+		orthIndexCount, = struct.unpack_from('>L', data, 0x18)
+		if DEBUG:
+			print "orthTagTable: %s" % tagTable
+		hasEntryLength = hasTag(tagTable, 0x02)
+		if not hasEntryLength:
+			print "Info: Index doesn't contain entry length tags"
+		
+		print "Read dictionary index data"
+		for i in range(metaOrthIndex + 1, metaOrthIndex + 1 + orthIndexCount):
+			data = sect.loadSection(i)
+			idxtPos, = struct.unpack_from('>L', data, 0x14)
+			entryCount, = struct.unpack_from('>L', data, 0x18)
+			idxPositions = []
+			for j in range(entryCount):
+				pos, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * j))
+				idxPositions.append(pos)
+			# The last entry ends before the IDXT tag (but there might be zero fill bytes we need to ignore!)
+			idxPositions.append(idxtPos)
+
+			for j in range(entryCount):
+				startPos = idxPositions[j]
+				endPos = idxPositions[j+1]
+				textLength = ord(data[startPos])
+				text = data[startPos+1:startPos+1+textLength]
+				tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
+				if 0x01 in tagMap:
+					if decodeInflection and 0x2a in tagMap:
+						inflectionGroups = getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable, inflIndexData, inflNameData, tagMap[0x2a])
+					else:
+						inflectionGroups = ""
+					assert len(tagMap[0x01]) == 1
+					entryStartPosition = tagMap[0x01][0]
+					if hasEntryLength:
+						if entryStartPosition in positionMap:
+							positionMap[entryStartPosition] = positionMap[entryStartPosition] + '<idx:entry><idx:orth value="%s">%s</idx:orth>' % (text, inflectionGroups)
+						else:
+							positionMap[entryStartPosition] = '<idx:entry><idx:orth value="%s">%s</idx:orth>' % (text, inflectionGroups)
+						assert len(tagMap[0x02]) == 1
+						entryEndPosition = entryStartPosition + tagMap[0x02][0]
+						if entryEndPosition in positionMap:
+							positionMap[entryEndPosition] = "</idx:entry>" + positionMap[entryEndPosition]
+						else:
+							positionMap[entryEndPosition] = "</idx:entry>"
+						
+					else:
+						indexTags = '<idx:entry>\n<idx:orth value="%s">\n%s</idx:entry>\n' % (text, inflectionGroups)
+						if entryStartPosition in positionMap:
+							positionMap[entryStartPosition] = positionMap[entryStartPosition] + indexTags
+						else:
+							positionMap[entryStartPosition] = indexTags
+
+	# write out the images to the folder of images
+	print "Decode images"
+	for i in xrange(firstimg, sect.num_sections):
+		# We might write sections which doesn't contain an image (usually the last sections), but they won't be
+		# referenced as images from the html code, so there is no need to filter them.
+		data = sect.loadSection(i)
+		# The file extension doesn't need not match the actual file content, it must be just a supported one.
+		imgname = ("%05d.jpg" % (1+i-firstimg))
+		outimg = os.path.join(imgdir, imgname)
+		f = open(outimg, 'wb')
+		f.write(data)
+		f.close()
 
 	# process the raw text
-	# Adding anchors...
-	positions = set([])
+	# find anchors...
+	print "Find link anchors"
 	link_pattern = re.compile(r'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''',
 		re.IGNORECASE)
 	for match in link_pattern.finditer(rawtext):
-		positions.add(int(match.group(1)))
+		position = int(match.group(1))
+		if position in positionMap:
+			positionMap[position] = positionMap[position] + '<a id="filepos%d" />' % position
+		else:
+			positionMap[position] = '<a id="filepos%d" />' % position
+
+	# apply dictionary metadata and anchors
+	print "Insert data into html"
+	if hugeFile:
+		outtmp = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.tmp'
+		f = open(outtmp, "wb")
+
 	pos = 0
 	srctext = ''
-	anchor = '<a id="filepos%d" />'
-	for end in sorted(positions):
-		if end == 0:
-			continue # something's up - can't put a link in before <html>
-		srctext += rawtext[pos:end] + (anchor % end)
+	lastPos = len(rawtext)
+	for end in sorted(positionMap.keys()):
+		if end == 0 or end > lastPos:
+			continue # something's up - can't put a tag in outside <html>...</html>
+		if hugeFile:
+			f.write(rawtext[pos:end])
+			f.write(positionMap[end])
+		else:
+			srctext += rawtext[pos:end] + positionMap[end]
 		pos = end
-	srctext += rawtext[pos:]
 
-	# and now put in the hrefs
-	link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''',
-		re.IGNORECASE)
+	if hugeFile:
+		f.write(rawtext[pos:])
+		f.close()
+	
+	# free rawtext resources
+	rawtext = None
+
+	if hugeFile:
+		f = open(outtmp, "rb")
+		srctext = f.read()
+		f.close()
+		os.unlink(outtmp)
+		
+	# put in the hrefs
+	print "Insert hrefs into html"
+	link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''', re.IGNORECASE)
 	srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
 
 	# remove empty anchors
+	print "Remove empty anchors from html"
 	srctext = re.sub(r"<a/>",r"", srctext)
 
-	#write out rare text
-	#outrare = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rareml'
-	#f = open(outrare, 'wb')
-	#f.write(srctext)
-	#f.close
-
 	# convert image references
-	for i in xrange(sect.num_sections-firstimg):
-		if imgnames[i] is not "Not_an_Image":
-			searchtext = '''<img([^>]*)recindex=['"]{0,1}%05d['"]{0,1}''' % (i+1)
-			replacetext = r'''<img\1src="'''+ '''images/''' + imgnames[i] +'''"'''
-			srctext = re.sub(searchtext, replacetext, srctext)
+	print "Insert image references into html"
+	# First pattern ensures that replacements are only done within the image tag.
+	image_pattern = re.compile(r'''(<img.*?>)''', re.IGNORECASE)
+	# Second pattern replaces recindex/hirecindex/lorecindex name and value.
+	image_index_pattern = re.compile(r'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
 
-	#write out source text
+	subImageIndex = lambda match: image_index_pattern.sub(r'''src="images/\1.jpg"''', match.group(0))
+	srctext = image_pattern.sub(subImageIndex, srctext)
+	
+	# add in character set meta into the html header if needed
+	srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')+'" />'+srctext[12:]
+	
+	# write out source text
+	print "Write html"
 	f = open(outsrc, 'wb')
 	f.write(srctext)
 	f.close
 
 	# write out the metadata as an OEB 1.0 OPF file
+	print "Write opf"
 	outhtmlbasename = os.path.basename(outsrc)
 	f = file(outopf, 'wb')
 	data = '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -481,7 +951,7 @@ def unpackBook(infile, outdir):
 	data += ' xmlns:oebpackage="http://openebook.org/namespaces/oeb-package/1.0/">\n'
 	# Handle standard metadata
 	data += '<dc:Title>' + metadata.get('Title','Untitled') + '</dc:Title>\n'
-	data += '<dc:Language>' + getLanguage(metadata.get('LangID',0),metadata.get('SubLangID',0)) + '</dc:Language>\n'
+	data += '<dc:Language>' + metadata.get('Language') + '</dc:Language>\n'
 	data += '<dc:Identifier id="uid">' + metadata.get('UniqueID',0) + '</dc:Identifier>\n'
 	if 'Creator' in metadata:
 		data += '<dc:Creator>'+metadata.get('Creator')+'</dc:Creator>\n'
@@ -502,10 +972,14 @@ def unpackBook(infile, outdir):
 	if 'Rights' in metadata:
 		data += '<dc:Rights>'+metadata.get('Rights')+'</dc:Rights>\n'
 	data += '</dc-metadata>\n<x-metadata>\n'
+	if 'DictInLanguage' in metadata:
+		data += '<DictionaryInLanguage>'+metadata.get('DictInLanguage')+'</DictionaryInLanguage>\n'
+	if 'DictOutLanguage' in metadata:
+		data += '<DictionaryOutLanguage>'+metadata.get('DictOutLanguage')+'</DictionaryOutLanguage>\n'
 	if 'Codec' in metadata:
 		data += '<output encoding="'+metadata.get('Codec')+'">\n</output>\n'
 	if 'CoverOffset' in metadata:
-		data += '<EmbeddedCover>images/'+imgnames[int(metadata.get('CoverOffset'))]+'</EmbeddedCover>\n'
+		data += '<EmbeddedCover>images/%05d.jpg</EmbeddedCover>\n' % (int(metadata.get('CoverOffset')) + 1)
 	if 'Review' in metadata:
 		data += '<Review>'+metadata.get('Review')+'</Review>\n'
 	if ('Price' in metadata) and ('Currency' in metadata):
@@ -538,9 +1012,10 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.24"
+	print "MobiUnpack 0.26"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
+	print "  With Dictionary Support and Other Additions by S. Siebert"
 	if len(sys.argv) < 2:
 		print ""
 		print "Description:"
@@ -561,7 +1036,7 @@ def main(argv=sys.argv):
 			return 1
 	
 		try:
-			print 'Unpacking Book ... '
+			print 'Unpacking Book...'
 			unpackBook(infile, outdir)
 			print 'Completed'
 			
