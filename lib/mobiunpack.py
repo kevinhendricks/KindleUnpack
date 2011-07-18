@@ -20,6 +20,8 @@
 #  0.25 - Now added character set metadata to html file for utf-8 files.
 #  0.26 - Dictionary support added. Image handling speed improved. For huge files create temp files to speed up decoding.
 #         Language decoding fixed. Metadata is now converted to utf-8 when written to opf file.
+#  0.27 - Add idx:entry attribute "scriptable" if dictionary contains entry length tags. Don't save non-image sections
+#         as images. Extract and save source zip file included by kindlegen as kindlegensrc.zip.
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -29,6 +31,12 @@ WRITE_RAW_DATA = False
 
 HUGE_FILE_SIZE = 5 * 1024 * 1024
 """ If the size of the uncompressed raw html exceeds this limit, use temporary files to speed up processing. """
+
+EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
+""" The EOF record content. """
+
+KINDLEGENSRC_FILENAME = "kindlegensrc.zip"
+""" The name for the kindlegen source archive. """
 
 class Unbuffered:
 	def __init__(self, stream):
@@ -411,10 +419,10 @@ def getInflectionGroups(mainEntry, controlByteCount, tagTable, data, inflectionN
 
 		# Make sure that the required tags are available.
 		if 0x05 not in tagMap:
-			print "Required tag 0x05 not found in tagMap"
+			print "Error: Required tag 0x05 not found in tagMap"
 			return ""
 		if 0x1a not in tagMap:
-			print "Required tag 0x1a not found in tagMap"
+			print "Error: Required tag 0x1a not found in tagMap"
 			return ""
 
 		result += "<idx:infl>"
@@ -782,7 +790,7 @@ def unpackBook(infile, outdir):
 
 	decodeInflection = True
 	if metaOrthIndex != 0xFFFFFFFF:
-		print "Document contains orthographic index, handle as dictionary"
+		print "Info: Document contains orthographic index, handle as dictionary"
 		if metaInflIndex == 0xFFFFFFFF:
 			decodeInflection = False
 		else:
@@ -837,10 +845,12 @@ def unpackBook(infile, outdir):
 					assert len(tagMap[0x01]) == 1
 					entryStartPosition = tagMap[0x01][0]
 					if hasEntryLength:
+						# The idx:entry attribute "scriptable" must be present to create entry length tags.
+						ml = '<idx:entry scriptable="yes"><idx:orth value="%s">%s</idx:orth>' % (text, inflectionGroups)
 						if entryStartPosition in positionMap:
-							positionMap[entryStartPosition] = positionMap[entryStartPosition] + '<idx:entry><idx:orth value="%s">%s</idx:orth>' % (text, inflectionGroups)
+							positionMap[entryStartPosition] = positionMap[entryStartPosition] + ml 
 						else:
-							positionMap[entryStartPosition] = '<idx:entry><idx:orth value="%s">%s</idx:orth>' % (text, inflectionGroups)
+							positionMap[entryStartPosition] = ml
 						assert len(tagMap[0x02]) == 1
 						entryEndPosition = entryStartPosition + tagMap[0x02][0]
 						if entryEndPosition in positionMap:
@@ -861,6 +871,26 @@ def unpackBook(infile, outdir):
 		# We might write sections which doesn't contain an image (usually the last sections), but they won't be
 		# referenced as images from the html code, so there is no need to filter them.
 		data = sect.loadSection(i)
+		type = data[0:4]
+		if type in ["FLIS", "FCIS", "FDST", "DATP"]: # FIXME FDST and DATP aren't mentioned in MOBI wiki entry.
+			# Ignore FLIS, FCIS, FDST and DATP sections.
+			if DEBUG:
+				print "Skip section %i as it doesn't contain an image but a %s record." % (i, type)
+			continue
+		elif type == "SRCS":
+			# The mobi file was created by kindlegen and contains a zip archive with all source files.
+			# Extract the archive and save it.
+			print "Info: File contains kindlegen source archive, extracting as %s" % KINDLEGENSRC_FILENAME
+			f = open(os.path.join(outdir, KINDLEGENSRC_FILENAME), "wb")
+			f.write(data[16:])
+			f.close()
+			continue
+		if data == EOF_RECORD:
+			if DEBUG:
+				print "Skip section %i as it doesn't contain an image but the EOF record." % i
+			# The EOF section must be the last section.
+			assert i + 1 == sect.num_sections
+			break
 		# The file extension doesn't need not match the actual file content, it must be just a supported one.
 		imgname = ("%05d.jpg" % (1+i-firstimg))
 		outimg = os.path.join(imgdir, imgname)
@@ -1012,7 +1042,7 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.26"
+	print "MobiUnpack 0.27"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	print "  With Dictionary Support and Other Additions by S. Siebert"
