@@ -22,6 +22,7 @@
 #         Language decoding fixed. Metadata is now converted to utf-8 when written to opf file.
 #  0.27 - Add idx:entry attribute "scriptable" if dictionary contains entry length tags. Don't save non-image sections
 #         as images. Extract and save source zip file included by kindlegen as kindlegensrc.zip.
+#  0.28 - Added back correct image file name extensions, created FastConcat class to simplify and clean up
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -50,7 +51,34 @@ class Unbuffered:
 import sys
 sys.stdout=Unbuffered(sys.stdout)
 
-import array, struct, os, re
+import array, struct, os, re, imghdr, tempfile
+
+class FastConcat:
+	def __init__(self, useFile=True):
+		self.useFile = useFile
+		self.f = None
+		self.tempname = None
+		self.strlst = None
+		if self.useFile:
+			self.f = tempfile.NamedTemporaryFile(mode='w+b',suffix='.dat',delete=False)
+			self.tempname = self.f.name
+		else :
+			self.strlst = []
+	def concat(self, data):
+		if self.useFile:
+			self.f.write(data)
+		else:
+			self.strlst.append(data)
+	def getresult(self):
+		if self.useFile:
+			self.f.close()
+			data = file(self.tempname,'rb').read()
+			os.remove(self.tempname)
+			return data
+		else:
+			data = "".join(self.strlst)
+			self.strlst = None
+			return data
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -743,31 +771,16 @@ def unpackBook(infile, outdir):
 			data = data[:-num]
 		return data
 
-	#get raw mobi html-like markup languge
+	# get raw mobi html-like markup languge
 	print "Unpack raw html"
-	rawtext = ''
-	if hugeFile:
-		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
-		f = open(outraw, 'wb')
+	fc = FastConcat(hugeFile)
 	for i in xrange(records):
-		data = sect.loadSection(1+i)
-		data = trimTrailingDataEntries(data)
-		data = unpack(data)
-		if hugeFile:
-			f.write(data)
-		else:
-			rawtext += data
-
-	if hugeFile:
-		f.close()
-		f = open(outraw, 'rb')
-		rawtext = f.read()
-		f.close()
-		if not WRITE_RAW_DATA:
-			os.unlink(outraw)
+		data = trimTrailingDataEntries(sect.loadSection(1+i))
+		fc.concat(unpack(data))
+	rawtext = fc.getresult()
 			
 	#write out raw text
-	if WRITE_RAW_DATA and not hugeFile:
+	if WRITE_RAW_DATA:
 		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
 		f = open(outraw, 'wb')
 		f.write(rawtext)
@@ -867,6 +880,7 @@ def unpackBook(infile, outdir):
 
 	# write out the images to the folder of images
 	print "Decode images"
+	imgnames = []
 	for i in xrange(firstimg, sect.num_sections):
 		# We might write sections which doesn't contain an image (usually the last sections), but they won't be
 		# referenced as images from the html code, so there is no need to filter them.
@@ -876,7 +890,7 @@ def unpackBook(infile, outdir):
 			# Ignore FLIS, FCIS, FDST and DATP sections.
 			if DEBUG:
 				print "Skip section %i as it doesn't contain an image but a %s record." % (i, type)
-			continue
+			# continue
 		elif type == "SRCS":
 			# The mobi file was created by kindlegen and contains a zip archive with all source files.
 			# Extract the archive and save it.
@@ -884,19 +898,24 @@ def unpackBook(infile, outdir):
 			f = open(os.path.join(outdir, KINDLEGENSRC_FILENAME), "wb")
 			f.write(data[16:])
 			f.close()
-			continue
+			# continue
 		if data == EOF_RECORD:
 			if DEBUG:
 				print "Skip section %i as it doesn't contain an image but the EOF record." % i
 			# The EOF section must be the last section.
 			assert i + 1 == sect.num_sections
-			break
-		# The file extension doesn't need not match the actual file content, it must be just a supported one.
-		imgname = ("%05d.jpg" % (1+i-firstimg))
-		outimg = os.path.join(imgdir, imgname)
-		f = open(outimg, 'wb')
-		f.write(data)
-		f.close()
+			# break
+		# Get the proper file extension 
+		imgtype = imghdr.what("dummy",data)
+		if imgtype is None:
+			imgnames.append("Not_an_Image")
+		else:
+			imgname = ("image%05d." % (1+i-firstimg)) + imgtype
+			imgnames.append(imgname)
+			outimg = os.path.join(imgdir, imgnames[i-firstimg])
+			f = open(outimg, 'wb')
+			f.write(data)
+			f.close()
 
 	# process the raw text
 	# find anchors...
@@ -912,35 +931,20 @@ def unpackBook(infile, outdir):
 
 	# apply dictionary metadata and anchors
 	print "Insert data into html"
-	if hugeFile:
-		outtmp = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.tmp'
-		f = open(outtmp, "wb")
-
+	fc = FastConcat(hugeFile)
 	pos = 0
-	srctext = ''
 	lastPos = len(rawtext)
 	for end in sorted(positionMap.keys()):
 		if end == 0 or end > lastPos:
 			continue # something's up - can't put a tag in outside <html>...</html>
-		if hugeFile:
-			f.write(rawtext[pos:end])
-			f.write(positionMap[end])
-		else:
-			srctext += rawtext[pos:end] + positionMap[end]
+		fc.concat(rawtext[pos:end])
+		fc.concat(positionMap[end])
 		pos = end
+	fc.concat(rawtext[pos:])
 
-	if hugeFile:
-		f.write(rawtext[pos:])
-		f.close()
-	
 	# free rawtext resources
 	rawtext = None
-
-	if hugeFile:
-		f = open(outtmp, "rb")
-		srctext = f.read()
-		f.close()
-		os.unlink(outtmp)
+	srctext = fc.getresult()
 		
 	# put in the hrefs
 	print "Insert hrefs into html"
@@ -953,17 +957,20 @@ def unpackBook(infile, outdir):
 
 	# convert image references
 	print "Insert image references into html"
-	# First pattern ensures that replacements are only done within the image tag.
+	# split string into image tag pieces and other pieces
 	image_pattern = re.compile(r'''(<img.*?>)''', re.IGNORECASE)
-	# Second pattern replaces recindex/hirecindex/lorecindex name and value.
 	image_index_pattern = re.compile(r'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
+	srcpieces = re.split(image_pattern, srctext)
+	srctext = None
+	# all odd pieces are image tags (nulls string on even pieces if no space between them in srctext)
+	for i in range(1, len(srcpieces), 2):
+		for m in re.finditer(image_index_pattern, srcpieces[i]):
+			replacement = 'src="images/' + imgnames[int(m.group(1))-1] + '"'
+			srcpieces[i] = re.sub(image_index_pattern, replacement, srcpieces[i], 1)
+	srctext = "".join(srcpieces)
 
-	subImageIndex = lambda match: image_index_pattern.sub(r'''src="images/\1.jpg"''', match.group(0))
-	srctext = image_pattern.sub(subImageIndex, srctext)
-	
 	# add in character set meta into the html header if needed
 	srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')+'" />'+srctext[12:]
-	
 	# write out source text
 	print "Write html"
 	f = open(outsrc, 'wb')
@@ -1009,7 +1016,7 @@ def unpackBook(infile, outdir):
 	if 'Codec' in metadata:
 		data += '<output encoding="'+metadata.get('Codec')+'">\n</output>\n'
 	if 'CoverOffset' in metadata:
-		data += '<EmbeddedCover>images/%05d.jpg</EmbeddedCover>\n' % (int(metadata.get('CoverOffset')) + 1)
+		data += '<EmbeddedCover>images/'+imgnames[int(metadata.get('CoverOffset'))] + '</EmbeddedCover>\n'
 	if 'Review' in metadata:
 		data += '<Review>'+metadata.get('Review')+'</Review>\n'
 	if ('Price' in metadata) and ('Currency' in metadata):
@@ -1042,7 +1049,7 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.27"
+	print "MobiUnpack 0.28"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	print "  With Dictionary Support and Other Additions by S. Siebert"
