@@ -23,15 +23,14 @@
 #  0.27 - Add idx:entry attribute "scriptable" if dictionary contains entry length tags. Don't save non-image sections
 #         as images. Extract and save source zip file included by kindlegen as kindlegensrc.zip.
 #  0.28 - Added back correct image file name extensions, created FastConcat class to simplify and clean up
+#  0.29 - Metadata handling reworked, multiple entries of the same type are now supported. Serveral missing types added.
+#         FastConcat class has been removed as in-memory handling with lists is faster, even for huge files.
 
 DEBUG = False
 """ Set to True to print debug information. """
 
 WRITE_RAW_DATA = False
 """ Set to True to create additional files with raw data for debugging/reverse engineering. """
-
-HUGE_FILE_SIZE = 5 * 1024 * 1024
-""" If the size of the uncompressed raw html exceeds this limit, use temporary files to speed up processing. """
 
 EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
 """ The EOF record content. """
@@ -51,34 +50,7 @@ class Unbuffered:
 import sys
 sys.stdout=Unbuffered(sys.stdout)
 
-import array, struct, os, re, imghdr, tempfile
-
-class FastConcat:
-	def __init__(self, useFile=True):
-		self.useFile = useFile
-		self.f = None
-		self.tempname = None
-		self.strlst = None
-		if self.useFile:
-			self.f = tempfile.NamedTemporaryFile(mode='w+b',suffix='.dat',delete=False)
-			self.tempname = self.f.name
-		else :
-			self.strlst = []
-	def concat(self, data):
-		if self.useFile:
-			self.f.write(data)
-		else:
-			self.strlst.append(data)
-	def getresult(self):
-		if self.useFile:
-			self.f.close()
-			data = file(self.tempname,'rb').read()
-			os.remove(self.tempname)
-			return data
-		else:
-			data = "".join(self.strlst)
-			self.strlst = None
-			return data
+import array, struct, os, re, imghdr
 
 class UncompressedReader:
 	def unpack(self, data):
@@ -289,8 +261,16 @@ def getLanguage(langID, sublangID):
 
 	return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
 
+META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'Thumb Offset', 'Fake Cover',
+			 'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
+			 'Font Signature', 'Watermark', 'Clipping Limit', 'CDE Type', 'Updated Title', ]
+""" List of tags without a corresponding standard opf tag. """
+
 def getMetaData(codec, extheader):
 	id_map_strings = { 
+		  1 : 'Drm Server Id',
+		  2 : 'Drm Commerce Id',
+		  3 : 'Drm Ebookbase Book Id',
 		100 : 'Creator',
 		101 : 'Publisher',
 		102 : 'Imprint',
@@ -305,37 +285,67 @@ def getMetaData(codec, extheader):
 		111 : 'Type',
 		112 : 'Source',
 		113 : 'ASIN',
+		117 : 'Adult',
 		118 : 'Price',
 		119 : 'Currency',
+		200 : 'DictShortName',
+		208 : 'Watermark',
+		501 : 'CDE Type',
 		503 : 'Updated Title',
 	}
 	id_map_values = { 
 		116 : 'StartOffset',
-		201 : "CoverOffset",
+		201 : 'CoverOffset',
+		202 : 'Thumb Offset',
+		203 : 'Fake Cover',
+		204 : 'Creator Software',
+		205 : 'Creator Major Version',
+		206 : 'Creator Minor Version',
+		207 : 'Creator Build Number',
+		401 : 'Clipping Limit',
 	}
+	id_list_ignored = [
+		209, # Tamper Proof Keys
+		300, # Font Signature
+		403, # Unknown
+	]
 	metadata = {}
+
+	def addValue(name, value):
+		if name not in metadata:
+			metadata[name] = [value]
+		else:
+			metadata[name].append(value)
+			if DEBUG:
+				print "multiple values: metadata[%s]=%s" % (name, metadata[name])
+
 	_length, num_items = struct.unpack('>LL', extheader[4:12])
 	extheader = extheader[12:]
 	pos = 0
-	left = num_items
-	while left > 0:
-		left -= 1
+	for _ in range(num_items):
 		id, size = struct.unpack('>LL', extheader[pos:pos+8])
 		content = extheader[pos + 8: pos + size]
-		if id in id_map_strings.keys():
+		if id in id_list_ignored:
+			# Ignore this tag
+			pass
+		elif id in id_map_strings.keys():
 			name = id_map_strings[id]
-			metadata[name] = unicode(content, codec).encode("utf-8")
+			addValue(name, unicode(content, codec).encode("utf-8"))
 		elif id in id_map_values.keys():
 			name = id_map_values[id]
 			if size == 9:
 				value, = struct.unpack('B',content)
-				metadata[name] = str(value)
+				addValue(name, str(value)) 
 			elif size == 10:
 				value, = struct.unpack('>H',content)
-				metadata[name] = str(value)
+				addValue(name, str(value))
 			elif size == 12:
 				value, = struct.unpack('>L',content)
-				metadata[name] = str(value)
+				addValue(name, str(value))
+			else:
+				print "Error: Value for %s has unexpected size of %s" % (name, size)
+		else:
+			print "Warning: Unknown metadata with id %s found" % id
 		pos += size
 	return metadata
 
@@ -646,6 +656,22 @@ def applyInflectionRule(mainEntry, inflectionRuleData, start, end):
 			return None
 	return byteArray.tostring()
 
+def handleTag(data, metadata, key, tag):
+	'''
+	Format metadata values.
+
+	@param data: List of formatted metadata entries.
+	@param metadata: The metadata dictionary.
+	@param key: The key of the metadata value to handle.
+	@param tag: The opf tag the the metadata value.
+	'''
+	if key in metadata:
+		for value in metadata[key]:
+			# Strip all tag attributes for the closing tag.
+			closingTag = tag.split(" ")[0]
+			data.append('<%s>%s</%s>\n' % (tag, value, closingTag))
+		del metadata[key]
+
 def unpackBook(infile, outdir):
 	codec_map = {
 		1252 : 'windows-1252',
@@ -708,29 +734,26 @@ def unpackBook(infile, outdir):
 	langcode = struct.unpack('!L', header[0x5c:0x60])[0]
 	langid = langcode & 0xFF
 	sublangid = (langcode >> 10) & 0xFF
-	metadata['Language']  = getLanguage(langid, sublangid)
+	metadata['Language'] = [getLanguage(langid, sublangid)]
 
 	langcode = struct.unpack('!L', header[0x60:0x64])[0]
 	langid = langcode & 0xFF
 	sublangid = (langcode >> 10) & 0xFF
 	if langid != 0:
-		metadata['DictInLanguage'] = getLanguage(langid, sublangid)
+		metadata['DictInLanguage'] = [getLanguage(langid, sublangid)]
 
 	langcode = struct.unpack('!L', header[0x64:0x68])[0]
 	langid = langcode & 0xFF
 	sublangid = (langcode >> 10) & 0xFF
 	if langid != 0:
-		metadata['DictOutLanguage'] = getLanguage(langid, sublangid)
+		metadata['DictOutLanguage'] = [getLanguage(langid, sublangid)]
 
-	metadata['Title'] = unicode(title, codec).encode("utf-8")
-	metadata['Codec'] = codec
-	metadata['UniqueID'] = str(unique_id)
+	metadata['Title'] = [unicode(title, codec).encode("utf-8")]
+	metadata['Codec'] = [codec]
+	metadata['UniqueID'] = [str(unique_id)]
 
-	rawSize, = struct.unpack_from('>L', header, 0x4)
 	records, = struct.unpack_from('>H', header, 0x8)
 
-	hugeFile = True if rawSize > HUGE_FILE_SIZE else False
-		
 	multibyte = 0
 	trailers = 0
 	if sect.ident == 'BOOKMOBI':
@@ -773,11 +796,12 @@ def unpackBook(infile, outdir):
 
 	# get raw mobi html-like markup languge
 	print "Unpack raw html"
-	fc = FastConcat(hugeFile)
+	dataList = []
 	for i in xrange(records):
 		data = trimTrailingDataEntries(sect.loadSection(1+i))
-		fc.concat(unpack(data))
-	rawtext = fc.getresult()
+		dataList.append(unpack(data))
+	rawtext = "".join(dataList)
+	dataList = None
 			
 	#write out raw text
 	if WRITE_RAW_DATA:
@@ -890,7 +914,8 @@ def unpackBook(infile, outdir):
 			# Ignore FLIS, FCIS, FDST and DATP sections.
 			if DEBUG:
 				print "Skip section %i as it doesn't contain an image but a %s record." % (i, type)
-			# continue
+			imgnames.append(None)
+			continue
 		elif type == "SRCS":
 			# The mobi file was created by kindlegen and contains a zip archive with all source files.
 			# Extract the archive and save it.
@@ -898,21 +923,32 @@ def unpackBook(infile, outdir):
 			f = open(os.path.join(outdir, KINDLEGENSRC_FILENAME), "wb")
 			f.write(data[16:])
 			f.close()
-			# continue
+			imgnames.append(None)
+			continue
 		if data == EOF_RECORD:
 			if DEBUG:
 				print "Skip section %i as it doesn't contain an image but the EOF record." % i
-			# The EOF section must be the last section.
-			assert i + 1 == sect.num_sections
-			# break
+			# The EOF section should be the last section.
+			if i + 1 != sect.num_sections:
+				print "Warning: EOF section is not the last section"
+			imgnames.append(None)
+			continue
 		# Get the proper file extension 
-		imgtype = imghdr.what("dummy",data)
+		imgtype = imghdr.what(None, data)
 		if imgtype is None:
-			imgnames.append("Not_an_Image")
+			print "Warning: Section %s contains no image or an unknown image format" % i
+			imgnames.append(None)
+			if DEBUG:
+				print 'First 4 bytes: %s' % toHex(data[0:4])
+				imgname = "image%05d.raw" % (1+i-firstimg)
+				outimg = os.path.join(imgdir, imgname)
+				f = open(outimg, 'wb')
+				f.write(data)
+				f.close()
 		else:
-			imgname = ("image%05d." % (1+i-firstimg)) + imgtype
+			imgname = "image%05d.%s" % (1+i-firstimg, imgtype)
 			imgnames.append(imgname)
-			outimg = os.path.join(imgdir, imgnames[i-firstimg])
+			outimg = os.path.join(imgdir, imgname)
 			f = open(outimg, 'wb')
 			f.write(data)
 			f.close()
@@ -931,20 +967,20 @@ def unpackBook(infile, outdir):
 
 	# apply dictionary metadata and anchors
 	print "Insert data into html"
-	fc = FastConcat(hugeFile)
 	pos = 0
 	lastPos = len(rawtext)
+	dataList = []
 	for end in sorted(positionMap.keys()):
 		if end == 0 or end > lastPos:
 			continue # something's up - can't put a tag in outside <html>...</html>
-		fc.concat(rawtext[pos:end])
-		fc.concat(positionMap[end])
+		dataList.append(rawtext[pos:end])
+		dataList.append(positionMap[end])
 		pos = end
-	fc.concat(rawtext[pos:])
+	dataList.append(rawtext[pos:])
 
-	# free rawtext resources
 	rawtext = None
-	srctext = fc.getresult()
+	srctext = "".join(dataList)
+	dataList = None
 		
 	# put in the hrefs
 	print "Insert hrefs into html"
@@ -964,13 +1000,21 @@ def unpackBook(infile, outdir):
 	srctext = None
 	# all odd pieces are image tags (nulls string on even pieces if no space between them in srctext)
 	for i in range(1, len(srcpieces), 2):
-		for m in re.finditer(image_index_pattern, srcpieces[i]):
-			replacement = 'src="images/' + imgnames[int(m.group(1))-1] + '"'
-			srcpieces[i] = re.sub(image_index_pattern, replacement, srcpieces[i], 1)
+		tag = srcpieces[i]
+		for m in re.finditer(image_index_pattern, tag):
+			imageNumber = int(m.group(1))
+			imageName = imgnames[imageNumber-1]
+			if imageName is None:
+				print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
+			else:
+				replacement = 'src="images/' + imageName + '"'
+				tag = re.sub(image_index_pattern, replacement, tag, 1)
+		srcpieces[i] = tag
 	srctext = "".join(srcpieces)
 
 	# add in character set meta into the html header if needed
-	srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')+'" />'+srctext[12:]
+	if 'Codec' in metadata:
+		srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')[0]+'" />'+srctext[12:]
 	# write out source text
 	print "Write html"
 	f = open(outsrc, 'wb')
@@ -979,81 +1023,122 @@ def unpackBook(infile, outdir):
 
 	# write out the metadata as an OEB 1.0 OPF file
 	print "Write opf"
-	outhtmlbasename = os.path.basename(outsrc)
+	outhtmlbasename = unicode(os.path.basename(outsrc), sys.getfilesystemencoding()).encode("utf-8")
 	f = file(outopf, 'wb')
-	data = '<?xml version="1.0" encoding="utf-8"?>\n'
-	data += '<package unique-identifier="uid">\n'
-	data += '<metadata>\n'
-	data += '<dc-metadata xmlns:dc="http://purl.org/metadata/dublin_core"'
-	data += ' xmlns:oebpackage="http://openebook.org/namespaces/oeb-package/1.0/">\n'
+	data = []
+	data.append('<?xml version="1.0" encoding="utf-8"?>\n')
+	data.append('<package unique-identifier="uid">\n')
+	data.append('<metadata>\n')
+	data.append('<dc-metadata xmlns:dc="http://purl.org/metadata/dublin_core"')
+	data.append(' xmlns:oebpackage="http://openebook.org/namespaces/oeb-package/1.0/">\n')
 	# Handle standard metadata
-	data += '<dc:Title>' + metadata.get('Title','Untitled') + '</dc:Title>\n'
-	data += '<dc:Language>' + metadata.get('Language') + '</dc:Language>\n'
-	data += '<dc:Identifier id="uid">' + metadata.get('UniqueID',0) + '</dc:Identifier>\n'
-	if 'Creator' in metadata:
-		data += '<dc:Creator>'+metadata.get('Creator')+'</dc:Creator>\n'
-	if 'Publisher' in metadata:
-		data += '<dc:Publisher>'+metadata.get('Publisher')+'</dc:Publisher>\n'
-	if 'ISBN' in metadata:
-		data += '<dc:Identifier scheme="ISBN">'+metadata.get('ISBN')+'</dc:Identifier>\n'
+	if 'Title' in metadata:
+		handleTag(data, metadata, 'Title', 'dc:Title')
+	else:
+		data.append('<dc:Title>Untitled</dc:Title>\n')
+	handleTag(data, metadata, 'Language', 'dc:Language')
+	if 'UniqueID' in metadata:
+		handleTag(data, metadata, 'UniqueID', 'dc:Identifier id="uid"')
+	else:
+		data.append('<dc:Identifier id="uid">0</dc:Identifier>\n')
+	handleTag(data, metadata, 'Creator', 'dc:Creator')
+	handleTag(data, metadata, 'Contributor', 'dc:Contributor')
+	handleTag(data, metadata, 'Publisher', 'dc:Publisher')
+	handleTag(data, metadata, 'Source', 'dc:Source')
+	handleTag(data, metadata, 'Type', 'dc:Type')
+	handleTag(data, metadata, 'ISBN', 'dc:Identifier scheme="ISBN"')
 	if 'Subject' in metadata:
 		if 'SubjectCode' in metadata:
-			data += '<dc:Subject BASICCode="'+metadata.get('SubjectCode')+'">'
+			codeList = metadata['SubjectCode']
+			del metadata['SubjectCode']
 		else:
-			data += '<dc:Subject>'
-		data += metadata.get('Subject')+'</dc:Subject>\n'
-	if 'Description' in metadata:
-		data += '<dc:Description>'+metadata.get('Description')+'</dc:Description>\n'
-	if 'Published' in metadata:
-		data += '<dc:Date>'+metadata.get('Published')+'</dc:Date>\n'
-	if 'Rights' in metadata:
-		data += '<dc:Rights>'+metadata.get('Rights')+'</dc:Rights>\n'
-	data += '</dc-metadata>\n<x-metadata>\n'
-	if 'DictInLanguage' in metadata:
-		data += '<DictionaryInLanguage>'+metadata.get('DictInLanguage')+'</DictionaryInLanguage>\n'
-	if 'DictOutLanguage' in metadata:
-		data += '<DictionaryOutLanguage>'+metadata.get('DictOutLanguage')+'</DictionaryOutLanguage>\n'
+			codeList = None
+		for i in range(len(metadata['Subject'])):
+			if codeList and i < len(codeList):
+				data.append('<dc:Subject BASICCode="'+codeList[i]+'">')
+			else:
+				data.append('<dc:Subject>')
+			data.append(metadata['Subject'][i]+'</dc:Subject>\n')
+		del metadata['Subject']
+	handleTag(data, metadata, 'Description', 'dc:Description')
+	handleTag(data, metadata, 'Published', 'dc:Date')
+	handleTag(data, metadata, 'Rights', 'dc:Rights')
+	data.append('</dc-metadata>\n<x-metadata>\n')
+	handleTag(data, metadata, 'DictInLanguage', 'DictionaryInLanguage')
+	handleTag(data, metadata, 'DictOutLanguage', 'DictionaryOutLanguage')
 	if 'Codec' in metadata:
-		data += '<output encoding="'+metadata.get('Codec')+'">\n</output>\n'
+		for value in metadata['Codec']:
+			data.append('<output encoding="'+value+'" />\n')
+		del metadata['Codec']
 	if 'CoverOffset' in metadata:
-		data += '<EmbeddedCover>images/'+imgnames[int(metadata.get('CoverOffset'))] + '</EmbeddedCover>\n'
-	if 'Review' in metadata:
-		data += '<Review>'+metadata.get('Review')+'</Review>\n'
-	if ('Price' in metadata) and ('Currency' in metadata):
-		data += '<SRP Currency="'+metadata.get('Currency')+'">'+metadata.get('Price')+'</SRP>\n'
+		imageNumber = int(metadata['CoverOffset'][0])
+		imageName = imgnames[imageNumber]
+		if imageName is None:
+			print "Error: Cover image %s was not recognized as a valid image" % imageNumber
+		else:
+			data.append('<EmbeddedCover>images/'+imageName+'</EmbeddedCover>\n')
+		del metadata['CoverOffset']
+	handleTag(data, metadata, 'Review', 'Review')
+	handleTag(data, metadata, 'Imprint', 'Imprint')
+	handleTag(data, metadata, 'Adult', 'Adult')
+	handleTag(data, metadata, 'DictShortName', 'DictionaryVeryShortName')
+	if 'Price' in metadata and 'Currency' in metadata:
+		priceList = metadata['Price']
+		currencyList = metadata['Currency']
+		if len(priceList) != len(currencyList):
+			print "Error: found %s price entries, but %s currency entries."
+		else:
+			for i in range(len(priceList)):
+				data.append('<SRP Currency="'+currencyList[i]+'">'+priceList[i]+'</SRP>\n')
+		del metadata['Price']
+		del metadata['Currency']
 	data += '</x-metadata>\n'
-	if ('ASIN' in metadata):
-		data += '<meta name="ASIN" content="' + metadata['ASIN'] + '" />\n'
-	if ('Updated Title' in metadata):
-		data += '<meta name="Updated Title" content="' + metadata['Updated Title'] + '" />\n'
-	data += '</metadata>\n<manifest>\n'
-	data += '<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'"></item>\n'
-	data += '</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n'
+	firstMeta = True
+	for metaName in META_TAGS:
+		if metaName in metadata:
+			if firstMeta:
+				firstMeta = False
+				data.append("<!-- The following meta tags are just for information and will be ignored by mobigen/kindlegen. -->\n")
+			for value in metadata[metaName]:
+				data.append('<meta name="'+metaName+'" content="'+value+'" />\n')
+			del metadata[metaName]
+	data.append('</metadata>\n<manifest>\n')
+	data.append('<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'" />\n')
+	data.append('</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n')
 	
 	# get guide items from metadata
 	metaguidetext = ''
 	if 'StartOffset' in metadata:
-		metaguidetext += '<reference title="Start" type="text" href="'+outhtmlbasename+'#filepos'+metadata.get('StartOffset')+'" />'
-	
+		metaguidetext += '<reference type="text" href="'+outhtmlbasename+'#filepos'+metadata.get('StartOffset')[0]+'" />\n'
+		del metadata['StartOffset']
+
+	# Warn about unhandled metadata
+	for key in metadata.keys():
+		print "Warning: Unhandled metadata %s: %s" % (key, metadata[key])
+		del metadata[key]
+
+	assert len(metadata) == 0
+
 	# get guide items from text
 	guidetext =''
 	guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
 	if guidematch:
 		replacetext = r'''href="'''+outhtmlbasename+r'''#filepos\1"'''
-		guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(0))
-		guidetext = guidetext[7:-8]
-	data += '<guide>\n'+metaguidetext+'\n'+guidetext+'\n'+'</guide>\n'
+		guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
+		guidetext += '\n'
+		guidetext = unicode(guidetext, codec).encode("utf-8")
+	data.append('<guide>\n' + metaguidetext + guidetext + '</guide>\n')
 	
-	data += '</package>'
-	f.write(data)
+	data.append('</package>')
+	f.write("".join(data))
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.28"
+	print "MobiUnpack 0.29"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	print "  With Dictionary Support and Other Additions by S. Siebert"
-	if len(sys.argv) < 2:
+	if len(argv) < 2:
 		print ""
 		print "Description:"
 		print "  Unpacks an unencrypted MobiPocket file to html and images"
@@ -1062,10 +1147,10 @@ def main(argv=sys.argv):
 		print "  mobiunpack.py infile.mobi [outdir]"
 		return 1
 	else:  
-		if len(sys.argv) >= 3:
-			infile, outdir = sys.argv[1:]
+		if len(argv) >= 3:
+			infile, outdir = argv[1:]
 		else:
-			infile = sys.argv[1]
+			infile = argv[1]
 			outdir = os.path.splitext(infile)[0]
 		infileext = os.path.splitext(infile)[1].upper()
 		if infileext not in ['.MOBI', '.PRC', '.AZW']:
@@ -1088,3 +1173,6 @@ def main(argv=sys.argv):
 
 if __name__ == "__main__":
 	sys.exit(main())
+
+# For execution runtime tests start mobiunpack as follows:
+# python -m timeit -r 3 -n 1 -v "import mobiunpack; mobiunpack.main([None, '<filename.mobi>'])"
