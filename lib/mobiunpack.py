@@ -25,6 +25,7 @@
 #  0.28 - Added back correct image file name extensions, created FastConcat class to simplify and clean up
 #  0.29 - Metadata handling reworked, multiple entries of the same type are now supported. Serveral missing types added.
 #         FastConcat class has been removed as in-memory handling with lists is faster, even for huge files.
+#  0.30 - add support for outputting **all** metadata values - encode content with hex if of unknown type 
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -260,11 +261,10 @@ def getLanguage(langID, sublangID):
 	}
 
 	return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
-
-META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'Thumb Offset', 'Fake Cover',
-			 'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
-			 'Font Signature', 'Watermark', 'Clipping Limit', 'CDE Type', 'Updated Title', ]
-""" List of tags without a corresponding standard opf tag. """
+META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'ThumbOffset', 'Fake Cover',
+                         'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
+                         'Watermark', 'Clipping Limit', 'Publisher Limit', 'Text to Speech Disabled', 'CDE Type', 
+	                 'Updated Title', 'Font Signature (hex)', 'Tamper Proof Keys (hex)',  ]
 
 def getMetaData(codec, extheader):
 	id_map_strings = { 
@@ -296,19 +296,21 @@ def getMetaData(codec, extheader):
 	id_map_values = { 
 		116 : 'StartOffset',
 		201 : 'CoverOffset',
-		202 : 'Thumb Offset',
+		202 : 'ThumbOffset',
 		203 : 'Fake Cover',
 		204 : 'Creator Software',
 		205 : 'Creator Major Version',
 		206 : 'Creator Minor Version',
 		207 : 'Creator Build Number',
 		401 : 'Clipping Limit',
+		402 : 'Publisher Limit',
+		404 : 'Text to Speech Disabled',
 	}
-	id_list_ignored = [
-		209, # Tamper Proof Keys
-		300, # Font Signature
-		403, # Unknown
-	]
+	id_map_hexstrings = { 
+		209 : 'Tamper Proof Keys (hex)',
+		300 : 'Font Signature (hex)',
+	}
+
 	metadata = {}
 
 	def addValue(name, value):
@@ -325,10 +327,7 @@ def getMetaData(codec, extheader):
 	for _ in range(num_items):
 		id, size = struct.unpack('>LL', extheader[pos:pos+8])
 		content = extheader[pos + 8: pos + size]
-		if id in id_list_ignored:
-			# Ignore this tag
-			pass
-		elif id in id_map_strings.keys():
+		if id in id_map_strings.keys():
 			name = id_map_strings[id]
 			addValue(name, unicode(content, codec).encode("utf-8"))
 		elif id in id_map_values.keys():
@@ -344,8 +343,13 @@ def getMetaData(codec, extheader):
 				addValue(name, str(value))
 			else:
 				print "Error: Value for %s has unexpected size of %s" % (name, size)
+		elif id in id_map_hexstrings.keys():
+			name = id_map_hexstrings[id]
+			addValue(name, content.encode('hex'))
 		else:
 			print "Warning: Unknown metadata with id %s found" % id
+			name = str(id) + ' (hex)'
+			addValue(name, content.encode('hex'))
 		pos += size
 	return metadata
 
@@ -1093,15 +1097,25 @@ def unpackBook(infile, outdir):
 		del metadata['Price']
 		del metadata['Currency']
 	data += '</x-metadata>\n'
-	firstMeta = True
-	for metaName in META_TAGS:
-		if metaName in metadata:
-			if firstMeta:
-				firstMeta = False
-				data.append("<!-- The following meta tags are just for information and will be ignored by mobigen/kindlegen. -->\n")
-			for value in metadata[metaName]:
-				data.append('<meta name="'+metaName+'" content="'+value+'" />\n')
-			del metadata[metaName]
+	data.append("<!-- The following meta tags are just for information and will be ignored by mobigen/kindlegen. -->\n")
+	if 'ThumbOffset' in metadata:
+		imageNumber = int(metadata['ThumbOffset'][0])
+		imageName = imgnames[imageNumber]
+		if imageName is None:
+			print "Error: Cover Thumbnail image %s was not recognized as a valid image" % imageNumber
+		else:
+			data.append('<meta name="Cover ThumbNail Image" content="'+'images/'+imageName+'" />\n')
+		del metadata['ThumbOffset']
+        for metaName in META_TAGS:
+                if metaName in metadata:
+                        for value in metadata[metaName]:
+                                data.append('<meta name="'+metaName+'" content="'+value+'" />\n')
+                        del metadata[metaName]
+	for key in metadata.keys():
+		if key != 'StartOffset':
+			for value in metadata[key]:
+				data.append('<meta name="'+key+'" content="'+value+'" />\n')
+			del metadata[key]
 	data.append('</metadata>\n<manifest>\n')
 	data.append('<item id="item1" media-type="text/x-oeb1-document" href="'+outhtmlbasename+'" />\n')
 	data.append('</manifest>\n<spine>\n<itemref idref="item1"/>\n</spine>\n<tours>\n</tours>\n')
@@ -1111,13 +1125,6 @@ def unpackBook(infile, outdir):
 	if 'StartOffset' in metadata:
 		metaguidetext += '<reference type="text" href="'+outhtmlbasename+'#filepos'+metadata.get('StartOffset')[0]+'" />\n'
 		del metadata['StartOffset']
-
-	# Warn about unhandled metadata
-	for key in metadata.keys():
-		print "Warning: Unhandled metadata %s: %s" % (key, metadata[key])
-		del metadata[key]
-
-	assert len(metadata) == 0
 
 	# get guide items from text
 	guidetext =''
@@ -1134,7 +1141,7 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.29"
+	print "MobiUnpack 0.30"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	print "  With Dictionary Support and Other Additions by S. Siebert"
