@@ -16,7 +16,7 @@
 #         of test for trailing data/multibyte characters
 #  0.22 - Fixed problem with > 9 images
 #  0.23 - Now output Start guide item
-#  0.24 - set firstimg value for 'TEXtREAd'
+#  0.24 - Set firstimg value for 'TEXtREAd'
 #  0.25 - Now added character set metadata to html file for utf-8 files.
 #  0.26 - Dictionary support added. Image handling speed improved. For huge files create temp files to speed up decoding.
 #         Language decoding fixed. Metadata is now converted to utf-8 when written to opf file.
@@ -25,7 +25,8 @@
 #  0.28 - Added back correct image file name extensions, created FastConcat class to simplify and clean up
 #  0.29 - Metadata handling reworked, multiple entries of the same type are now supported. Serveral missing types added.
 #         FastConcat class has been removed as in-memory handling with lists is faster, even for huge files.
-#  0.30 - add support for outputting **all** metadata values - encode content with hex if of unknown type 
+#  0.30 - Add support for outputting **all** metadata values - encode content with hex if of unknown type 
+#  0.31 - Now supports Print Replica ebooks, outputting PDF and mysterious data sections
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -806,10 +807,18 @@ def unpackBook(infile, outdir):
 		dataList.append(unpack(data))
 	rawtext = "".join(dataList)
 	dataList = None
+	
+	# check for Print Replica ebook
+	printReplica = (rawtext[0:4] == "%MOP")
+	if printReplica:
+		print "Print Replica ebook detected"
 			
 	#write out raw text
 	if WRITE_RAW_DATA:
-		outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
+		if printReplica:
+			outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawpr'
+		else:
+			outraw = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + '.rawml'
 		f = open(outraw, 'wb')
 		f.write(rawtext)
 		f.close()
@@ -957,73 +966,92 @@ def unpackBook(infile, outdir):
 			f.write(data)
 			f.close()
 
-	# process the raw text
-	# find anchors...
-	print "Find link anchors"
-	link_pattern = re.compile(r'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''',
-		re.IGNORECASE)
-	for match in link_pattern.finditer(rawtext):
-		position = int(match.group(1))
-		if position in positionMap:
-			positionMap[position] = positionMap[position] + '<a id="filepos%d" />' % position
-		else:
-			positionMap[position] = '<a id="filepos%d" />' % position
-
-	# apply dictionary metadata and anchors
-	print "Insert data into html"
-	pos = 0
-	lastPos = len(rawtext)
-	dataList = []
-	for end in sorted(positionMap.keys()):
-		if end == 0 or end > lastPos:
-			continue # something's up - can't put a tag in outside <html>...</html>
-		dataList.append(rawtext[pos:end])
-		dataList.append(positionMap[end])
-		pos = end
-	dataList.append(rawtext[pos:])
-
-	rawtext = None
-	srctext = "".join(dataList)
-	dataList = None
-		
-	# put in the hrefs
-	print "Insert hrefs into html"
-	link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''', re.IGNORECASE)
-	srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
-
-	# remove empty anchors
-	print "Remove empty anchors from html"
-	srctext = re.sub(r"<a/>",r"", srctext)
-
-	# convert image references
-	print "Insert image references into html"
-	# split string into image tag pieces and other pieces
-	image_pattern = re.compile(r'''(<img.*?>)''', re.IGNORECASE)
-	image_index_pattern = re.compile(r'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
-	srcpieces = re.split(image_pattern, srctext)
-	srctext = None
-	# all odd pieces are image tags (nulls string on even pieces if no space between them in srctext)
-	for i in range(1, len(srcpieces), 2):
-		tag = srcpieces[i]
-		for m in re.finditer(image_index_pattern, tag):
-			imageNumber = int(m.group(1))
-			imageName = imgnames[imageNumber-1]
-			if imageName is None:
-				print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
+	if printReplica:
+		# read in number of tables, and so calculate the start of the indicies into the data
+		numTables, = struct.unpack_from('>L', rawtext, 0x04)
+		tableIndexOffset = 8 + 4*numTables
+		# for each table, read in count of sections, assume first section is a PDF
+		# and output other sections as binary files
+		for i in xrange(numTables):
+			sectionCount, = struct.unpack_from('>L', rawtext, 0x08 + 4*i)
+			for j in xrange(sectionCount):
+				sectionOffset, sectionLength, = struct.unpack_from('>LL', rawtext, tableIndexOffset)
+				tableIndexOffset += 8
+				if j == 0:
+					entryName = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + ('.%03d.pdf' % (i+1))
+				else:
+					entryName = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0]) + ('.%03d.%03d.data' % ((i+1),j))
+				f = open(entryName, 'wb')
+				f.write(rawtext[sectionOffset:(sectionOffset+sectionLength)])
+				f.close()
+	else:
+		# process the raw text
+		# find anchors...
+		print "Find link anchors"
+		link_pattern = re.compile(r'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''',
+			re.IGNORECASE)
+		for match in link_pattern.finditer(rawtext):
+			position = int(match.group(1))
+			if position in positionMap:
+				positionMap[position] = positionMap[position] + '<a id="filepos%d" />' % position
 			else:
-				replacement = 'src="images/' + imageName + '"'
-				tag = re.sub(image_index_pattern, replacement, tag, 1)
-		srcpieces[i] = tag
-	srctext = "".join(srcpieces)
-
-	# add in character set meta into the html header if needed
-	if 'Codec' in metadata:
-		srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')[0]+'" />'+srctext[12:]
-	# write out source text
-	print "Write html"
-	f = open(outsrc, 'wb')
-	f.write(srctext)
-	f.close
+				positionMap[position] = '<a id="filepos%d" />' % position
+	
+		# apply dictionary metadata and anchors
+		print "Insert data into html"
+		pos = 0
+		lastPos = len(rawtext)
+		dataList = []
+		for end in sorted(positionMap.keys()):
+			if end == 0 or end > lastPos:
+				continue # something's up - can't put a tag in outside <html>...</html>
+			dataList.append(rawtext[pos:end])
+			dataList.append(positionMap[end])
+			pos = end
+		dataList.append(rawtext[pos:])
+	
+		rawtext = None
+		srctext = "".join(dataList)
+		dataList = None
+			
+		# put in the hrefs
+		print "Insert hrefs into html"
+		link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''', re.IGNORECASE)
+		srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
+	
+		# remove empty anchors
+		print "Remove empty anchors from html"
+		srctext = re.sub(r"<a/>",r"", srctext)
+	
+		# convert image references
+		print "Insert image references into html"
+		# split string into image tag pieces and other pieces
+		image_pattern = re.compile(r'''(<img.*?>)''', re.IGNORECASE)
+		image_index_pattern = re.compile(r'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
+		srcpieces = re.split(image_pattern, srctext)
+		srctext = None
+		# all odd pieces are image tags (nulls string on even pieces if no space between them in srctext)
+		for i in range(1, len(srcpieces), 2):
+			tag = srcpieces[i]
+			for m in re.finditer(image_index_pattern, tag):
+				imageNumber = int(m.group(1))
+				imageName = imgnames[imageNumber-1]
+				if imageName is None:
+					print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
+				else:
+					replacement = 'src="images/' + imageName + '"'
+					tag = re.sub(image_index_pattern, replacement, tag, 1)
+			srcpieces[i] = tag
+		srctext = "".join(srcpieces)
+	
+		# add in character set meta into the html header if needed
+		if 'Codec' in metadata:
+			srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')[0]+'" />'+srctext[12:]
+		# write out source text
+		print "Write html"
+		f = open(outsrc, 'wb')
+		f.write(srctext)
+		f.close
 
 	# write out the metadata as an OEB 1.0 OPF file
 	print "Write opf"
@@ -1126,14 +1154,15 @@ def unpackBook(infile, outdir):
 		metaguidetext += '<reference type="text" href="'+outhtmlbasename+'#filepos'+metadata.get('StartOffset')[0]+'" />\n'
 		del metadata['StartOffset']
 
-	# get guide items from text
 	guidetext =''
-	guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
-	if guidematch:
-		replacetext = r'''href="'''+outhtmlbasename+r'''#filepos\1"'''
-		guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
-		guidetext += '\n'
-		guidetext = unicode(guidetext, codec).encode("utf-8")
+	if not printReplica:
+		# get guide items from text
+		guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
+		if guidematch:
+			replacetext = r'''href="'''+outhtmlbasename+r'''#filepos\1"'''
+			guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
+			guidetext += '\n'
+			guidetext = unicode(guidetext, codec).encode("utf-8")
 	data.append('<guide>\n' + metaguidetext + guidetext + '</guide>\n')
 	
 	data.append('</package>')
@@ -1141,17 +1170,18 @@ def unpackBook(infile, outdir):
 	f.close()
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.30"
+	print "MobiUnpack 0.31"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Images Support and Other Additions by P. Durrant and K. Hendricks"
 	print "  With Dictionary Support and Other Additions by S. Siebert"
 	if len(argv) < 2:
 		print ""
 		print "Description:"
-		print "  Unpacks an unencrypted MobiPocket file to html and images"
-		print "  in a folder of the same name as the mobipocket file."
+		print "  Unpacks an unencrypted Kindle/MobiPocket ebook to html and images"
+		print "  or an unencrypted Kindle/Print Replica ebook to PDF and images"
+		print "  in a folder of the same name as the original ebook."
 		print "Usage:"
-		print "  mobiunpack.py infile.mobi [outdir]"
+		print "  mobiunpack.py infile [outdir]"
 		return 1
 	else:  
 		if len(argv) >= 3:
@@ -1160,8 +1190,8 @@ def main(argv=sys.argv):
 			infile = argv[1]
 			outdir = os.path.splitext(infile)[0]
 		infileext = os.path.splitext(infile)[1].upper()
-		if infileext not in ['.MOBI', '.PRC', '.AZW']:
-			print "Error: first parameter must be a mobipocket file."
+		if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW4']:
+			print "Error: first parameter must be a Kindle/Mobipocket ebook or a Kindle/Print Replica ebook."
 			return 1
 	
 		try:
@@ -1169,10 +1199,6 @@ def main(argv=sys.argv):
 			unpackBook(infile, outdir)
 			print 'Completed'
 			
-			outname = os.path.basename(infile)
-			outname = os.path.splitext(outname)[0] + '.html'
-			outname = os.path.join(outdir,outname)
-			print 'The Mobi HTML Markup Language File can be found at: ' + outname 
 		except ValueError, e:
 			print "Error: %s" % e
 			return 1
