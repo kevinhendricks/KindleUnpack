@@ -1,0 +1,217 @@
+#!/usr/bin/env python
+# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+
+import sys, os, re
+
+class OPFProcessor:
+	def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False):
+		self.files = files
+		self.metadata = metadata
+		self.filenames = filenames
+		self.imgnames = imgnames
+		self.isNCX = isNCX
+		self.codec = mh.codec
+		self.isK8 = mh.isK8()
+		self.printReplica = mh.isPrintReplica()
+		self.guidetext = guidetext
+		self.used = usedmap
+		self.covername = None
+
+
+	def writeOPF(self):
+		# write out the metadata as an OEB 1.0 OPF file
+		print "Write opf"
+		metadata = self.metadata
+
+		META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'ThumbOffset', 'Fake Cover',
+							'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
+							'Watermark', 'Clipping Limit', 'Publisher Limit', 'Text to Speech Disabled', 'CDE Type', 
+							'Updated Title', 'Font Signature (hex)', 'Tamper Proof Keys (hex)',  ]
+		def handleTag(data, metadata, key, tag):
+			'''
+			Format metadata values.
+		
+			@param data: List of formatted metadata entries.
+			@param metadata: The metadata dictionary.
+			@param key: The key of the metadata value to handle.
+			@param tag: The opf tag the the metadata value.
+			'''
+			if key in metadata:
+				for value in metadata[key]:
+					# Strip all tag attributes for the closing tag.
+					closingTag = tag.split(" ")[0]
+					data.append('<%s>%s</%s>\n' % (tag, value, closingTag))
+				del metadata[key]
+				
+		data = []
+		data.append('<?xml version="1.0" encoding="utf-8"?>\n')
+		data.append('<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid">\n')
+		data.append('<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">\n')
+		#data.append('<dc-metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n')
+		# data.append(' xmlns:oebpackage="http://openebook.org/namespaces/oeb-package/1.0/">\n')
+		# Handle standard metadata
+		if 'Title' in metadata:
+			handleTag(data, metadata, 'Title', 'dc:title')
+		else:
+			data.append('<dc:title>Untitled</dc:title>\n')
+		handleTag(data, metadata, 'Language', 'dc:language')
+		if 'UniqueID' in metadata:
+			handleTag(data, metadata, 'UniqueID', 'dc:identifier id="uid"')
+		else:
+			data.append('<dc:identifier id="uid">0</dc:identifier>\n')
+		handleTag(data, metadata, 'Creator', 'dc:creator')
+		handleTag(data, metadata, 'Contributor', 'dc:contributor')
+		handleTag(data, metadata, 'Publisher', 'dc:publisher')
+		handleTag(data, metadata, 'Source', 'dc:source')
+		handleTag(data, metadata, 'Type', 'dc:type')
+		handleTag(data, metadata, 'ISBN', 'dc:identifier opf:scheme="ISBN"')
+		if 'Subject' in metadata:
+			if 'SubjectCode' in metadata:
+				codeList = metadata['SubjectCode']
+				del metadata['SubjectCode']
+			else:
+				codeList = None
+			for i in range(len(metadata['Subject'])):
+				if codeList and i < len(codeList):
+					data.append('<dc:subject BASICCode="'+codeList[i]+'">')
+				else:
+					data.append('<dc:subject>')
+				data.append(metadata['Subject'][i]+'</dc:subject>\n')
+			del metadata['Subject']
+		handleTag(data, metadata, 'Description', 'dc:description')
+		handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
+		handleTag(data, metadata, 'Rights', 'dc:rights')
+		#data.append('</dc-metadata>\n')
+		#data.append('<x-metadata>\n')
+		handleTag(data, metadata, 'DictInLanguage', 'DictionaryInLanguage')
+		handleTag(data, metadata, 'DictOutLanguage', 'DictionaryOutLanguage')
+		if 'Codec' in metadata:
+			for value in metadata['Codec']:
+				data.append('<meta name="output encoding" content="'+value+'" />\n')
+			del metadata['Codec']
+		if 'CoverOffset' in metadata:
+			imageNumber = int(metadata['CoverOffset'][0])
+			self.covername = self.imgnames[imageNumber]
+			if self.covername is None:
+				print "Error: Cover image %s was not recognized as a valid image" % imageNumber
+			else:
+				if self.isK8:
+					data.append('<meta name="cover" content="cover_img" />\n')
+					self.used[self.covername] = 'used'
+				else:
+					data.append('<meta name="EmbeddedCover" content="images/'+self.covername+'" />\n')
+
+			del metadata['CoverOffset']
+		handleTag(data, metadata, 'Review', 'Review')
+		handleTag(data, metadata, 'Imprint', 'Imprint')
+		handleTag(data, metadata, 'Adult', 'Adult')
+		handleTag(data, metadata, 'DictShortName', 'DictionaryVeryShortName')
+		if 'Price' in metadata and 'Currency' in metadata:
+			priceList = metadata['Price']
+			currencyList = metadata['Currency']
+			if len(priceList) != len(currencyList):
+				print "Error: found %s price entries, but %s currency entries."
+			else:
+				for i in range(len(priceList)):
+					data.append('<SRP Currency="'+currencyList[i]+'">'+priceList[i]+'</SRP>\n')
+			del metadata['Price']
+			del metadata['Currency']
+		data.append("<!-- The following meta tags are just for information and will be ignored by mobigen/kindlegen. -->\n")
+		if 'ThumbOffset' in metadata:
+			if not self.isK8:
+				imageNumber = int(metadata['ThumbOffset'][0])
+				imageName = self.imgnames[imageNumber]
+				if imageName is None:
+					print "Error: Cover Thumbnail image %s was not recognized as a valid image" % imageNumber
+				else:
+					data.append('<meta name="Cover ThumbNail Image" content="'+'Images/'+imageName+'" />\n')
+			del metadata['ThumbOffset']
+		for metaName in META_TAGS:
+			if metaName in metadata:
+				for value in metadata[metaName]:
+					data.append('<meta name="'+metaName+'" content="'+value+'" />\n')
+					del metadata[metaName]
+		for key in metadata.keys():
+			if key != 'StartOffset':
+				for value in metadata[key]:
+					data.append('<meta name="'+key+'" content="'+value+'" />\n')
+				del metadata[key]
+		#data.append('</x-metadata>\n')
+		data.append('</metadata>\n')
+		# build manifest
+		data.append('<manifest>\n')
+		media_map = {
+			'.jpg'  : 'image/jpeg',
+			'.jpeg' : 'image/jpeg',
+			'.png'  : 'image/png',
+			'.gif'  : 'image/gif',
+			'.svg'  : 'image/svg+xml',
+			'.xhtml': 'application/xhtml+xml',
+			'.html' : 'text/x-oeb1-document',
+			'.pdf'  : 'application/pdf',
+			'.ttf'  : 'application/x-font-ttf',
+			'.css'  : 'text/css'
+			}
+		spinerefs = []
+		idcnt = 0
+		for [dir,fname] in self.filenames:
+			name, ext = os.path.splitext(fname)
+			ext = ext.lower()
+			media = media_map.get(ext)
+			ref = "item%d" % idcnt
+			if dir != '':
+				data.append('<item id="' + ref + '" media-type="' + media + '" href="' + dir + '/' + fname +'" />\n')
+			else:
+				data.append('<item id="' + ref + '" media-type="' + media + '" href="' + fname +'" />\n')
+			if ext in ['.xhtml', '.html']:
+				spinerefs.append(ref)			
+			idcnt += 1
+		for fname in self.imgnames:
+			if self.isK8 and fname != None:
+				if self.used.get(fname,'not used') == 'not used':
+					continue
+				name, ext = os.path.splitext(fname)
+				ext = ext.lower()
+				media = media_map.get(ext,ext[1:])
+				if fname == self.covername:
+					ref = 'cover_img'
+				else:
+					ref = "item%d" % idcnt
+				if ext == '.ttf':
+					data.append('<item id="' + ref + '" media-type="' + media + '" href="Fonts/' + fname +'" />\n')
+				else:
+					if self.isK8:
+						data.append('<item id="' + ref + '" media-type="' + media + '" href="Images/' + fname +'" />\n')
+					else:
+						data.append('<item id="' + ref + '" media-type="' + media + '" href="images/' + fname +'" />\n')
+				idcnt += 1
+
+		if self.isNCX:
+			if self.isK8:
+				ncxname = 'toc.ncx'
+			else:
+				ncxname = self.files.getInputFileBasename() + '.ncx'
+			data += '<item id="ncx" media-type="application/x-dtbncx+xml" href="' + ncxname +'"></item>\n'
+		data.append('</manifest>\n')
+		# build spine
+		if self.isNCX:
+			data.append('<spine toc="ncx">\n')
+		else:
+			data.append('<spine>\n')
+		for entry in spinerefs:
+			data.append('<itemref idref="' + entry + '"/>\n')
+		data.append('</spine>\n<tours>\n</tours>\n')
+		
+		if not self.printReplica:
+			metaguidetext = ''
+			if not self.isK8:
+				# get guide items from metadata
+				if 'StartOffset' in metadata:
+					metaguidetext += '<reference type="text" href="'+self.filenames[0][1]+'#filepos'+metadata.get('StartOffset')[0]+'" />\n'
+					del metadata['StartOffset']
+			data.append('<guide>\n' + metaguidetext + self.guidetext + '</guide>\n')
+		data.append('</package>\n')
+		outopf = self.files.getOutputFilePath('.opf')
+		if self.isK8:
+			outopf = os.path.join(self.files.k8oebps,'content.opf')
+		file(outopf, 'wb').write("".join(data))
