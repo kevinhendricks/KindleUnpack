@@ -34,6 +34,7 @@
 #  0.34 - Improved K8 support, guide support, bug fixes
 #  0.35 - Added splitting combo mobi7/mobi8 into standalone mobi7 and mobi8 files
 #         Also handle mobi8-only file properly
+#  0.36 - very minor changes to support K8 mobis with no flow items, no ncx, etc
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -251,6 +252,7 @@ class MobiHeader:
 		self.skelidx = 0xffffffff
 		self.dividx = 0xffffffff
 		self.othidx = 0xfffffff
+		self.fdst = 0xffffffff
 
 		if self.sect.ident == 'TEXtREAd':
 			return
@@ -295,10 +297,15 @@ class MobiHeader:
 
 			# need to use the FDST record to find out how to properly unpack
 			# the rawML into pieces
-			# it is essentially just like the Palm DB Section info
+			# it is simply a table of start and end locations for each flow piece
 			self.fdst, = struct.unpack_from('>L', self.header, 0xc0)
+			self.fdstcnt, = struct.unpack_from('>L', self.header, 0xc4)
+			# if cnt is 1 or less, fdst section mumber can be garbage
+			if self.fdstcnt <= 1:
+				self.fdst = 0xffffffff
 			if self.fdst != 0xffffffff:
 				self.fdst += self.start
+
 		else:           
 			# Dictionary metaOrthIndex
 			self.metaOrthIndex, = struct.unpack_from('>L', self.header, 0x28)
@@ -311,21 +318,36 @@ class MobiHeader:
 				self.metaInflIndex += self.start
 		
 		if DEBUG:
-			print "firstaddl", self.firstaddl
-			print "ncxidx", self.ncxidx
+			print "firstaddl %0x" % self.firstaddl
+			print "ncxidx %0x" % self.ncxidx
 			if self.version == 8 or self.start != 0:
-				print "skelidx", self.skelidx
-				print "dividx", self.dividx
-				print "othidx", self.othidx
+				print "skelidx %0x" % self.skelidx
+				print "dividx %0x" % self.dividx
+				print "othidx %0x" % self.othidx
+				print "fdst %0x" % self.fdst
 
 
-		# Other known offsets in header and their meaning
+		# Other offsets in Mobi header and their meanings
 		# Offset  Format Meaning
 		# ------  ------ -------------
+		# 0x50    >L     First non-text record
+
+		# Only in Mobi KF8 Header
 		# 0xc0    >L     FDST start
-		# 0xc8    >L     FCIS start
-		# 0xd0    >L     FLIS start
+		# 0xc4    >L     Number of records inside FDST
+
+		# Only in older Mobi Header
+		# 0xc0    >H     first_content_index
+		# 0xc2    >H     last_content_index
+
+		# 0xc8    >L     FCIS start (index to)
+		# 0xcc    >L     ?Number of FCIS sections?
+		# 0xd0    >L     FLIS start (index to)
+		# 0xd4    >L     ?Number of FLIS sections?
+		# 0xe0    >L     SRCS start (index to)
+		# 0xe4    >L     SRCS COUNT
 		# 0x100   >L     DATP start
+		# NOTE: 0x104 is **NOT** the number of DATP sections
 
 	def isPrintReplica(self):
 		return self.mlstart[0:4] == "%MOP"
@@ -820,12 +842,9 @@ def unpackBook(infile, outdir):
 
 			# process the toc ncx 
 			# ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
-			ncx_data = []
-			if mh.hasNCX():
-				ncx = ncxExtract(mh, files)
-				ncx_data = ncx.parseNCX()
-				if ncx_data:
-					ncx.writeNCX(metadata)
+			ncx = ncxExtract(mh, files)
+			ncx_data = ncx.parseNCX()
+			ncx.writeNCX(metadata)
 
 			positionMap = {}
 
@@ -858,15 +877,12 @@ def unpackBook(infile, outdir):
 				guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
 				guidetext += '\n'
 				guidetext = unicode(guidetext, mh.codec).encode("utf-8")
-			ncx_exists = False
-			if mh.hasNCX():
-				ncx_exists = ncx.isNCX
-			opf = OPFProcessor(files, metadata, filenames, imgnames, ncx_exists, mh, usedmap, guidetext)
+			opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
 			opf.writeOPF()
 
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.35"
+	print "MobiUnpack 0.36"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
 	print "  With Additions by P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
 	if len(argv) < 2:

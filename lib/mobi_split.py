@@ -24,11 +24,13 @@ title_offset = 84
 first_image_record = 108
 first_content_index = 192
 last_content_index = 194
+kf8_last_content_index = 192 # for KF8 mobi headers
 fcis_index = 200
 flis_index = 208
 srcs_index = 224
 srcs_count = 228
 primary_index = 244
+datp_index = 256
 
 def getint(datain,ofs,sz='L'):
         i, = struct.unpack_from('>'+sz,datain,ofs)
@@ -72,7 +74,7 @@ def writesection(datain,secno,secdata): # overwrite, accounting for different le
 def nullsection(datain,secno): # make it zero-length without deleting it
         secstart, secend = getsecaddr(datain,secno)
         dataout = datain[:secstart]+datain[secend:]
-        dif =  -(secend-secstart)
+        dif =  secend-secstart
         if dif == 0:
                 return dataout
         nsec = getint(datain,number_of_pdb_records,'H')
@@ -80,27 +82,27 @@ def nullsection(datain,secno): # make it zero-length without deleting it
                 return dataout
         for i in range(secno+1,nsec):
                 ofs, = struct.unpack_from('>L',dataout,first_pdb_record+i*8)
-                ofs = ofs+dif
+                ofs = ofs-dif
                 dataout = dataout[:first_pdb_record+i*8]+struct.pack('>L',ofs)+dataout[first_pdb_record+i*8+4:]
         return dataout
 
 def deletesectionrange(datain,firstsec,lastsec): # delete a range of sections
         firstsecstart,firstsecend = getsecaddr(datain,firstsec)
         lastsecstart,lastsecend = getsecaddr(datain,lastsec)
-        dif = lastsecend - firstsecstart
+        dif = lastsecend - firstsecstart + 8*(lastsec-firstsec+1)
         dataout = datain[:firstsecstart]+datain[lastsecend:]
         nsec = getint(datain,number_of_pdb_records,'H')
         dataout = writeint(dataout,number_of_pdb_records,nsec-(lastsec-firstsec+1),'H')
-        for i in range(0,nsec):
+        for i in range(0,firstsec):
                 ofs, = struct.unpack_from('>L',dataout,first_pdb_record+i*8)
                 ofs = ofs-8*(lastsec-firstsec+1)
                 dataout = dataout[:first_pdb_record+i*8]+struct.pack('>L',ofs)+dataout[first_pdb_record+i*8+4:] 
         for i in range(lastsec+1,nsec):
                 ofs, = struct.unpack_from('>L',dataout,first_pdb_record+i*8)
-                ofs = ofs-dif
-                it = 2*i
+                ofs = ofs - dif
+                it = 2*(i-(lastsec-firstsec+1))
                 dataout = dataout[:first_pdb_record+i*8]+\
-                          struct.pack('>L',ofs)+struct.pack('L',it)+\
+                          struct.pack('>L',ofs)+struct.pack('>L',it)+\
                           dataout[first_pdb_record+i*8+8:]
         dataout = dataout[:first_pdb_record+firstsec*8]+dataout[first_pdb_record+(lastsec+1)*8:]
         dataout = writeint(dataout,number_of_pdb_records,nsec-(lastsec-firstsec+1),'H')
@@ -234,7 +236,7 @@ class mobi_split:
                 for i in range(firstimage,lastimage):
                         imgsec = readsection(self.result_file7,i)
                         if imgsec[0:4] in ['RESC','FONT']:
-                             self.result_file7 = nullsection(self.result_file7,i)
+                                self.result_file7 = nullsection(self.result_file7,i)
                 # mobi7 finished
 
                 # create standalone mobi8
@@ -242,10 +244,11 @@ class mobi_split:
                 target = getint(datain_kfrec0,first_image_record)
                 self.result_file8 = insertsectionrange(datain,firstimage,lastimage,self.result_file8,target)
                 datain_kfrec0 =readsection(self.result_file8,0)
-                ofs_list = [(194,'H'),(200,'L'),(208,'L')]
+                ofs_list = [(kf8_last_content_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L')]
                 for ofs,sz in ofs_list:
-                        n = getint(datain_kfrec0,ofs,sz)+lastimage-firstimage+1
-                        datain_kfrec0 = writeint(datain_kfrec0,ofs,n,sz)
+                        n = getint(datain_kfrec0,ofs,sz)
+                        if n>0:
+                                datain_kfrec0 = writeint(datain_kfrec0,ofs,n+lastimage-firstimage+1,sz)
                 self.result_file8 = writesection(self.result_file8,0,datain_kfrec0)
                 # mobi8 finished
                 
