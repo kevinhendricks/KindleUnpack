@@ -29,9 +29,11 @@
 #  0.30 - Add support for outputting **all** metadata values - encode content with hex if of unknown type 
 #  0.31 - Now supports Print Replica ebooks, outputting PDF and mysterious data sections
 #  0.32 - Now supports NCX file extraction/building.
-#		  Overhauled the structure of mobiunpack to be more class oriented.
+#                 Overhauled the structure of mobiunpack to be more class oriented.
 #  0.33 - Split Classes ito separate files and added prelim support for K8 format eBooks
 #  0.34 - Improved K8 support, guide support, bug fixes
+#  0.35 - Added splitting combo mobi7/mobi8 into standalone mobi7 and mobi8 files
+#         Also handle mobi8-only file properly
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -69,6 +71,7 @@ from mobi_html import HTMLProcessor, XHTMLK8Processor
 from mobi_ncx import ncxExtract
 from mobi_dict import dictSupport
 from mobi_k8proc import K8Processor
+from mobi_split import mobi_split
 
 
 class unpackException(Exception):
@@ -296,7 +299,7 @@ class MobiHeader:
 			self.fdst, = struct.unpack_from('>L', self.header, 0xc0)
 			if self.fdst != 0xffffffff:
 				self.fdst += self.start
-		else:		
+		else:           
 			# Dictionary metaOrthIndex
 			self.metaOrthIndex, = struct.unpack_from('>L', self.header, 0x28)
 			if self.metaOrthIndex != 0xffffffff:
@@ -379,7 +382,7 @@ class MobiHeader:
 				if ord(v) & 0x80:
 					num = 0
 				num = (num << 7) | (ord(v) & 0x7f)
-			return num	
+			return num      
 		def trimTrailingDataEntries(data):
 			for _ in xrange(trailers):
 				num = getSizeOfTrailingDataEntry(data)
@@ -439,6 +442,8 @@ class MobiHeader:
 			111 : 'Type',
 			112 : 'Source',
 			113 : 'ASIN',
+			114 : 'versionNumber',
+			115 : 'sample',
 			117 : 'Adult',
 			118 : 'Price',
 			119 : 'Currency',
@@ -446,17 +451,19 @@ class MobiHeader:
 			123 : 'book-type',
 			124 : 'orientation-lock',
 			126 : 'original-resolution',
-			129 : '129_-_?Embedded_What?',
+			129 : 'K8(129)_Masthead/Cover_Image',
 			132 : 'RegionMagnification',
 			200 : 'DictShortName',
 			208 : 'Watermark',
 			501 : 'CDE Type',
+			502 : 'last_update_time',
 			503 : 'Updated Title',
 		}
 		id_map_values = { 
 			116 : 'StartOffset',
-			121 : '121_-_Boundary_Section',
-			125 : '125_-_?Count_of_Resources_Fonts_Images?',
+			121 : 'K8(121)_Boundary_Section',
+			125 : 'K8(125)_Count_of_Resources_Fonts_Images',
+			131 : 'K8(131)_Unidentified_Count',
 			201 : 'CoverOffset',
 			202 : 'ThumbOffset',
 			203 : 'Fake Cover',
@@ -542,27 +549,37 @@ def unpackBook(infile, outdir):
 	if sect.ident != 'BOOKMOBI' and sect.ident != 'TEXtREAd':
 			raise unpackException('invalid file format')
 
+	# if this is a dual mobi7-mobi8 file split them up
+	mobisplit = mobi_split(infile)
+	if mobisplit.combo:
+		outmobi7 = os.path.join(files.outdir, 'mobi7-'+infile)
+		outmobi8 = os.path.join(files.outdir, 'mobi8-'+infile)
+		file(outmobi7, 'wb').write(mobisplit.getResult7())
+		file(outmobi8, 'wb').write(mobisplit.getResult8())
+
 	# scan sections to see if this is a compound mobi file (K8 format)
-	# and build a list of all mobi headers to process
+	# and build a list of all mobi headers to process.
 	mhlst = []
 	mh = MobiHeader(sect,0)
+	# if this is a mobi8-only file hasK8 here will be true
 	hasK8 = mh.isK8()
 	mhlst.append(mh)
 	K8Boundary = -1
 	
 	# the last section uses an appended entry of 0xfffffff as its starting point
 	# attempting to process it will cause problems
-	for i in xrange(len(sect.sections)-1):
-		before, after = sect.sections[i:i+2]
-		if (after - before) == 8:
-			data = sect.loadSection(i)
-			if data == K8_BOUNDARY:
-				print "Mobi Ebook uses the new K8 file format"
-				mh = MobiHeader(sect,i+1)
-				hasK8 = hasK8 or mh.isK8()
-				mhlst.append(mh)
-				K8Boundary = i
-				break
+	if not hasK8: # if this is a mobi8-only file we don't need to do this
+		for i in xrange(len(sect.sections)-1):
+			before, after = sect.sections[i:i+2]
+			if (after - before) == 8:
+				data = sect.loadSection(i)
+				if data == K8_BOUNDARY:
+					print "Mobi Ebook uses the new K8 file format"
+					mh = MobiHeader(sect,i+1)
+					hasK8 = hasK8 or mh.isK8()
+					mhlst.append(mh)
+					K8Boundary = i
+					break
 
 	if hasK8:
 		files.makeK8Struct()
@@ -849,9 +866,9 @@ def unpackBook(infile, outdir):
 
 
 def main(argv=sys.argv):
-	print "MobiUnpack 0.34"
+	print "MobiUnpack 0.35"
 	print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-	print "  With Additions by P. Durrant, K. Hendricks, S. Siebert, fandrieu and DiapDealer."
+	print "  With Additions by P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
 	if len(argv) < 2:
 		print ""
 		print "Description:"
