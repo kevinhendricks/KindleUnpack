@@ -40,7 +40,11 @@
 #  0.39 - improve split function so that ToC info is not lost for standalone mobi8s
 #  0.40 - make mobi7 split match official versions, add support for graphic novel metadata, improve debug for KF8
 #  0.41 - fix when StartOffset set to 0xffffffff, fix to work with older mobi versions, fix other minor metadata issues
-
+#  0.42 - add new class interface to allow it to integrate more easily with internal calibre routines
+#  0.43 - bug fixes for new class interface
+#  0.44 - more bug fixes and fix for potnetial bug caused by not properly closing created zip archive
+#  0.45 - sync to version in the new Mobi_Unpack plugin
+ 
 DEBUG = False
 """ Set to True to print debug information. """
 
@@ -189,27 +193,26 @@ class fileNames:
         self.zipUpDir(self.outzip,self.k8dir,'META-INF')
 
         self.zipUpDir(self.outzip,self.k8dir,'OEBPS')
+        self.outzip.close()
 
 
 
 class Sectionizer:
-    def __init__(self, filename, perm):
-        self.f = file(filename, perm)
-        header = self.f.read(78)
+    def __init__(self, filename_or_stream):
+        if hasattr(filename_or_stream, 'read'):
+            self.stream = filename_or_stream
+            self.stream.seek(0)
+        else:
+            self.stream = open(filename_or_stream, 'rb')
+        header = self.stream.read(78)
         self.ident = header[0x3C:0x3C+8]
         self.num_sections, = struct.unpack_from('>H', header, 76)
-        sections = self.f.read(self.num_sections*8)
-        # raw = header + sections
-        # file('palmdbtbl.dat','wb').write(raw)
+        sections = self.stream.read(self.num_sections*8)
         self.sections = struct.unpack_from('>%dL' % (self.num_sections*2), sections, 0)[::2] + (0xfffffff, )
-        if DEBUG:
-            print "Palm Database Section Map"
-            for i in xrange(len(self.sections)):
-                print "  %d - %0x" % (i, self.sections[i])
     def loadSection(self, section):
         before, after = self.sections[section:section+2]
-        self.f.seek(before)
-        return self.f.read(after - before)
+        self.stream.seek(before)
+        return self.stream.read(after - before)
 
 
 class MobiHeader:
@@ -593,7 +596,7 @@ def unpackBook(infile, outdir):
     files = fileNames(infile, outdir)
 
     # process the PalmDoc database header and verify it is a mobi
-    sect = Sectionizer(infile, 'rb')
+    sect = Sectionizer(infile)
     print "Palm DB type: ", sect.ident
     if sect.ident != 'BOOKMOBI' and sect.ident != 'TEXtREAd':
         raise unpackException('invalid file format')
@@ -913,6 +916,201 @@ def unpackBook(infile, outdir):
             opf.writeOPF()
 
 
+
+class Mobi8Reader:
+    def __init__(self, filename_or_stream, outdir):
+        if hasattr(filename_or_stream, 'read'):
+            self.stream = filename_or_stream
+            self.stream.seek(0)
+        else:
+            self.stream = open(filename_or_stream, 'rb')
+        self.files = fileNames('./ebook.mobi', outdir)
+
+        # process the PalmDoc database header and verify it is a mobi
+        self.sect = Sectionizer(self.stream)
+        if self.sect.ident != 'BOOKMOBI' and self.sect.ident != 'TEXtREAd':
+            raise UnpackException('invalid file format')
+
+        # scan sections to see if this is a compound mobi file (K8 format)
+        # and build a list of all mobi headers to process.
+        self.mhlst = []
+        mh = MobiHeader(self.sect,0)
+        self.codec = mh.codec
+        # if this is a mobi8-only file hasK8 here will be true
+        self.hasK8 = mh.isK8()
+        self.mhlst.append(mh)
+        self.K8Boundary = -1
+
+        # the last section uses an appended entry of 0xfffffff as its starting point
+        # attempting to process it will cause problems
+        if not self.hasK8: # if this is a mobi8-only file we don't need to do this
+            for i in xrange(len(self.sect.sections)-1):
+                before, after = self.sect.sections[i:i+2]
+                if (after - before) == 8:
+                    data = self.sect.loadSection(i)
+                    if data == K8_BOUNDARY:
+                        mh = MobiHeader(self.sect,i+1)
+                        self.codec = mh.codec
+                        self.hasK8 = self.hasK8 or mh.isK8()
+                        self.mhlst.append(mh)
+                        self.K8Boundary = i
+                        break
+
+    def isK8(self):
+        return self.hasK8
+
+    def getCodec(self):
+        return self.codec
+
+    def processMobi8(self):
+        mhlst = self.mhlst
+        sect = self.sect
+        files = self.files
+        K8Boundary = self.K8Boundary
+
+        if self.hasK8:
+            files.makeK8Struct()
+        else:
+            raise UnpackException('not a KF8 mobi')
+
+        imgnames = []
+        for mh in mhlst:
+
+            # process each mobi header
+            if mh.isEncrypted():
+                raise unpackException('file is encrypted')
+
+            # build up the metadata
+            metadata = mh.getMetaData()
+            metadata['Language'] = mh.Language()
+            metadata['Title'] = [unicode(mh.title, mh.codec).encode("utf-8")]
+            metadata['Codec'] = [mh.codec]
+            metadata['UniqueID'] = [str(mh.unique_id)]
+
+            # get the raw markup language
+            rawML = mh.getRawML()
+
+            # process additional sections that represent images, resources, fonts, and etc
+            # build up a list of image names to use to postprocess the rawml
+            firstaddl = mh.getfirstAddl()
+            beg = firstaddl
+            end = sect.num_sections
+            if firstaddl < K8Boundary:
+                end = K8Boundary
+            for i in xrange(beg, end):
+                data = sect.loadSection(i)
+                type = data[0:4]
+                if type in ["FLIS", "FCIS", "FDST", "DATP"]:
+                    imgnames.append(None)
+                    continue
+                elif type == "SRCS":
+                    imgnames.append(None)
+                    continue
+                elif type == "FONT":
+                    data = data[26:-4]
+                    uncompressed_data = zlib.decompress(data, -15)
+                    hdr = uncompressed_data[0:4]
+                    if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
+                        ext = '.ttf'
+                    else:
+                        ext = '.dat'
+                    fontname = "font%05d" % (1+i-beg)
+                    fontname += ext
+                    outfnt = os.path.join(files.imgdir, fontname)
+                    file(outfnt, 'wb').write(uncompressed_data)
+                    imgnames.append(fontname)
+                    continue
+                elif type == "RESC":
+                    imgnames.append(None)
+                    continue
+                if data == EOF_RECORD:
+                    imgnames.append(None)
+                    continue
+                # if reach here should be an image but double check to make sure
+                # Get the proper file extension
+                imgtype = imghdr.what(None, data)
+                if imgtype is None:
+                    imgnames.append(None)
+                else:
+                    imgname = "image%05d.%s" % (1+i-beg, imgtype)
+                    outimg = os.path.join(files.imgdir, imgname)
+                    file(outimg, 'wb').write(data)
+                    imgnames.append(imgname)
+
+            if mh.isK8():
+                # K8 mobi
+                # require other indexes which contain parsing information and the FDST info
+                # to process the rawml back into the xhtml files, css files, svg image files, etc
+                k8proc = K8Processor(mh, sect, DEBUG)
+                k8proc.buildParts(rawML)
+
+                # collect information for the guide first
+                guidetext = k8proc.getGuideText()
+                # add in any guide info from metadata, such as StartOffset
+                if 'StartOffset' in metadata.keys():
+                    starts = metadata['StartOffset']
+                    last_start = starts.pop()
+                    if int(last_start) == 0xffffffff:
+                        last_start = '0'
+                    filename, partnum, beg, end = k8proc.getFileInfo(int(last_start))
+                    idtext = k8proc.getIDTag(int(last_start))
+                    linktgt = filename
+                    if idtext != '':
+                        linktgt += '#' + idtext
+                    guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
+
+                # process the toc ncx
+                # ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
+                ncx = ncxExtract(mh, files)
+                ncx_data = ncx.parseNCX()
+
+                # extend the ncx data with
+                # info about filenames and proper internal idtags
+                for i in range(len(ncx_data)):
+                    ncxmap = ncx_data[i]
+                    pos = ncxmap['pos']
+                    filename, partnum, start, end = k8proc.getFileInfo(pos)
+                    ncxmap['filename'] = filename
+                    aidtag = k8proc.getIDTag(pos)
+                    ncxmap['idtag'] = aidtag
+                    ncx_data[i] = ncxmap
+
+                # write out the toc.ncx
+                ncx.writeK8NCX(ncx_data, metadata)
+
+                # convert the rawML to a set of xhtml files
+                htmlproc = XHTMLK8Processor(imgnames, k8proc)
+                usedmap = htmlproc.buildXHTML()
+
+                # write out the files
+                filenames = []
+                n =  k8proc.getNumberOfParts()
+                for i in range(n):
+                    part = k8proc.getPart(i)
+                    [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
+                    filenames.append([dir, filename])
+                    fname = os.path.join(files.k8oebps,dir,filename)
+                    file(fname,'wb').write(part)
+                n = k8proc.getNumberOfFlows()
+                for i in range(1, n):
+                    [type, format, dir, filename] = k8proc.getFlowInfo(i)
+                    flowpart = k8proc.getFlow(i)
+                    if format == 'file':
+                        filenames.append([dir, filename])
+                        fname = os.path.join(files.k8oebps,dir,filename)
+                        file(fname,'wb').write(flowpart)
+
+                opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
+                opf.writeOPF()
+
+                # make an epub of it all
+                files.makeEPUB(usedmap)
+                break
+
+                # otherwise do nothing and let it be processed by 
+        return os.path.join(files.k8dir, files.getInputFileBasename() + '.epub')
+
+
 def usage(progname):
     print ""
     print "Description:"
@@ -932,7 +1130,7 @@ def main(argv=sys.argv):
     global DEBUG
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "MobiUnpack 0.42"
+    print "MobiUnpack 0.45"
     print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
     print "  With Additions by P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     progname = os.path.basename(argv[0])
