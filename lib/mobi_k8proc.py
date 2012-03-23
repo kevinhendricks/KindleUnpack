@@ -35,10 +35,9 @@ class K8Processor:
             else:
                 print "Error: K8 Mobi with Missing FDST info"
         if self.DEBUG:
-            print "FDST Section Map"
+            print "\nFDST Section Map:  %d entries" % len(self.fdsttbl)
             for j in xrange(len(self.fdsttbl)):
                 print "  %d - %0x" % (j, self.fdsttbl[j])
-
 
         # read/process skeleton index info to create the skeleton table
         skeltbl = []
@@ -51,8 +50,10 @@ class K8Processor:
                 fileptr += 1
         self.skeltbl = skeltbl
         if self.DEBUG:
-            print "skeleton <xml> table: filenum, skeleton name, div tbl record count, start position, length"
-            print self.skeltbl
+            print "\nSkel Table:  %d entries" % len(self.skeltbl)
+            print "table: filenum, skeleton name, div tbl record count, start position, length"
+            for j in xrange(len(self.skeltbl)):
+                print self.skeltbl[j]
 
         # read/process the div index to create to <div> (and <p>) table
         divtbl = []
@@ -65,8 +66,10 @@ class K8Processor:
                 divtbl.append([int(text), ctocdata, tagMap[3][0], tagMap[4][0], tagMap[6][0], tagMap[6][1]])
         self.divtbl = divtbl
         if self.DEBUG:
-            print "<div> table: file position, link id text, file num, sequence number, start position, length"
-            print self.divtbl
+            print "\nDiv (Fragment) Table: %d entries" % len(self.divtbl)
+            print "table: file position, link id text, file num, sequence number, start position, length"
+            for j in xrange(len(self.divtbl)):
+                print self.divtbl[j]
 
         # read / process other index <guide> element of opf
         othtbl = []
@@ -85,8 +88,10 @@ class K8Processor:
                 othtbl.append([ref_type, ref_title, fileno])
         self.othtbl = othtbl
         if self.DEBUG:
-            print "other (guide) table: ref_type, ref_title, divtbl entry number"
-            print self.othtbl
+            print "\nOther (Guide) Table: %d entries" % len(self.othtbl)
+            print "table: ref_type, ref_title, divtbl entry number"
+            for j in xrange(len(self.othtbl)):
+                print self.othtbl[j]
 
 
     def buildParts(self, rawML):
@@ -97,6 +102,8 @@ class K8Processor:
             end = self.fdsttbl[j+1]
             if end == 0xffffffff:
                 end = len(rawML)
+                if self.DEBUG:
+                    print "splitting rawml starting at %d and ending at %d into flow piece %d" % (start, end, j)
             self.flows.append(rawML[start:end])
 
         # the first piece represents the xhtml text
@@ -105,7 +112,9 @@ class K8Processor:
 
         # walk the <skeleton> and <div> tables to build original source xhtml files
         # *without* destroying any file position information needed for later href processing
-        # and create final list of file separation start: stop points and etc  in partinfo
+        # and create final list of file separation start: stop points and etc in partinfo
+        if self.DEBUG:
+            print "\nRebuilding flow piece 0: the main body of the ebook"
         self.parts = []
         self.partinfo = []
         divptr = 0
@@ -115,6 +124,9 @@ class K8Processor:
             skeleton = text[skelpos: baseptr]
             for i in range(divcnt):
                 [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[divptr]
+                if self.DEBUG:
+                    print "    moving div/frag %d starting at %d of length %d" % (divptr, startpos, length)
+                    print "        inside of skeleton number %d at postion %d" %  (skelnum, insertpos)
                 if i == 0:
                     aidtext = idtext[12:-2]
                     filename = 'part%04d.xhtml' % filenum
@@ -184,25 +196,25 @@ class K8Processor:
 
             self.flows[j] = flowpart
             self.flowinfo.append([type, format, dir, fname])
-
-
+        
         if self.DEBUG:
-            print "\nFlow Map is: "
-            print self.flowinfo
+            print "\nFlow Map:  %d entries" % len(self.flowinfo)
+            for fi in self.flowinfo:
+                print fi
             print "\n"
-            print self.flows
-            print "\n"
-            print "\nXHTML File Part Position Information"
-            print self.partinfo
 
-        if False: # self.DEBUG
+            print "\nXHTML File Part Position Information: %d entries" % len(self.partinfo)
+            for pi in self.partinfo:
+                print pi
+
+        if False:  # self.DEBUG:
             # dump all of the locations of the aid tags used in TEXT
             # find id links only inside of tags
             #    inside any < > pair find all "aid=' and return whatever is inside the quotes
             #    [^>]* means match any amount of chars except for  '>' char
             #    [^'"] match any amount of chars except for the quote character
             #    \s* means match any amount of whitespace
-            print "positions of all aid= pieces"
+            print "\npositions of all aid= pieces"
             id_pattern = re.compile(r'''<[^>]*\said\s*=\s*['"]([^'"]*)['"][^>]*>''',re.IGNORECASE)
             for m in re.finditer(id_pattern, rawML):
                 print "%0x %s %0x" % (m.start(), m.group(1), fromBase32(m.group(1)))
@@ -270,11 +282,13 @@ class K8Processor:
         textblock = self.parts[pn]
         idtbl = []
         npos = pos - skelpos
-        # if npos inside a tag then search all text before the its end of tag marker
         pgt = textblock.find('>',npos)
         plt = textblock.find('<',npos)
-        if pgt < plt:
+        # if npos inside a tag then search all text before the its end of tag marker
+        # else not in a tag need to search the preceding tag
+        if plt == npos  or  pgt < plt:
             npos = pgt + 1
+        textblock = textblock[0:npos]
         # find id links only inside of tags
         #    inside any < > pair find all "id=' and return whatever is inside the quotes
         #    [^>]* means match any amount of chars except for  '>' char

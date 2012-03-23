@@ -3,6 +3,7 @@
 
 import sys
 import array, struct, os, re
+from itertools import cycle
 
 def getLanguage(langID, sublangID):
     mobilangdict = {
@@ -140,6 +141,8 @@ def toBase32(value, npad=4):
         rem_string = digits[remainder:remainder+1]
         num_string=rem_string + num_string
         current=next
+    if num_string == '':
+        num_string = '0'
     pad = npad - len(num_string)
     if pad > 0:
         num_string = '0' * pad + num_string
@@ -184,3 +187,38 @@ def readTagSection(start, data):
         pos = start + i
         tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
     return controlByteCount, tags
+
+def read_zlib_header(header):
+    header = bytearray(header)
+    # See sec 2.2 of RFC 1950 for the zlib stream format
+    # http://www.ietf.org/rfc/rfc1950.txt
+    if (header[0]*256 + header[1])%31 != 0:
+        return None, 'Bad zlib header, FCHECK failed'
+
+    cmf = header[0] & 0b1111
+    cinfo = header[0] >> 4
+    if cmf != 8:
+        return None, 'Unknown zlib compression method: %d'%cmf
+    if cinfo > 7:
+        return None, 'Invalid CINFO field in zlib header: %d'%cinfo
+    fdict = (header[1]&0b10000)>>5
+    if fdict != 0:
+        return None, 'FDICT based zlib compression not supported'
+    wbits = cinfo + 8
+    return wbits, None
+
+def mangle_fonts(encryption_key, data):
+    """
+    encryption_key = tuple(map(ord, encryption_key))
+    encrypted_data_list = []
+    for i in range(1024):
+        encrypted_data_list.append(\
+        chr(ord(data[i]) ^ encryption_key[i%16]))
+    encrypted_data_list.append(data[1024:])
+    return "".join(encrypted_data_list)
+    """
+    crypt = data[:1024]
+    key = cycle(iter(map(ord, encryption_key)))
+    encrypt = ''.join([chr(ord(x)^key.next()) for x in crypt])
+    return encrypt + data[1024:]
+

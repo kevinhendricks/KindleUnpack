@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
-import sys, os, re
+import sys, os, re, uuid
 
 class OPFProcessor:
     def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False):
@@ -16,9 +16,10 @@ class OPFProcessor:
         self.guidetext = guidetext
         self.used = usedmap
         self.covername = None
+        # Create a unique urn uuid
+        self.BookId = str(uuid.uuid4())
 
-
-    def writeOPF(self):
+    def writeOPF(self, has_obfuscated_fonts=False):
         # write out the metadata as an OEB 1.0 OPF file
         print "Write opf"
         metadata = self.metadata
@@ -62,7 +63,15 @@ class OPFProcessor:
         if 'UniqueID' in metadata.keys():
             handleTag(data, metadata, 'UniqueID', 'dc:identifier id="uid"')
         else:
+            # No unique ID in original, give it a generic one.
             data.append('<dc:identifier id="uid">0</dc:identifier>\n')
+        if self.isK8 and has_obfuscated_fonts:
+            # Use the random generated urn:uuid so obuscated fonts work.
+            # It doesn't need to be _THE_ unique identifier to work as a key
+            # for obfuscated fonts in Sigil, ADE and calibre. Its just has
+            # to use the opf:scheme="UUID" and have the urn:uuid: prefix.
+            data.append('<dc:identifier opf:scheme="UUID">urn:uuid:'+self.BookId+'</dc:identifier>\n')
+
         handleTag(data, metadata, 'Creator', 'dc:creator')
         handleTag(data, metadata, 'Contributor', 'dc:contributor')
         handleTag(data, metadata, 'Publisher', 'dc:publisher')
@@ -160,6 +169,7 @@ class OPFProcessor:
                 '.html' : 'text/x-oeb1-document',
                 '.pdf'  : 'application/pdf',
                 '.ttf'  : 'application/x-font-ttf',
+                '.otf'  : 'application/x-font-opentype',
                 '.css'  : 'text/css'
                 }
         spinerefs = []
@@ -188,6 +198,8 @@ class OPFProcessor:
                 else:
                     ref = "item%d" % idcnt
                 if ext == '.ttf':
+                    data.append('<item id="' + ref + '" media-type="' + media + '" href="Fonts/' + fname +'" />\n')
+                elif ext == '.otf':
                     data.append('<item id="' + ref + '" media-type="' + media + '" href="Fonts/' + fname +'" />\n')
                 else:
                     if self.isK8:
@@ -229,3 +241,5 @@ class OPFProcessor:
         else:
             outopf = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.opf')
         file(outopf, 'wb').write("".join(data))
+        if self.isK8:
+            return self.BookId
