@@ -128,7 +128,7 @@ class XHTMLK8Processor:
         posfid_index_pattern = re.compile(r'''['"]kindle:pos:fid:([0-9|A-V]+):off:([0-9|A-V]+).*?["']''')
 
         parts = []
-        print "update all *internal* links in each xhtml file"
+        print "Building proper xhtml for each file"
         for i in xrange(self.k8proc.getNumberOfParts()):
             part = self.k8proc.getPart(i)
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.getPartInfo(i)

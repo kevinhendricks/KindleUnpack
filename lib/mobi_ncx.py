@@ -57,7 +57,10 @@ class ncxExtract:
                     if tag in tagMap:
                         fieldvalue = tagMap[tag][i]
                         if tag == 6:
-                            fieldvalue = toBase32(fieldvalue)
+                            pos_fid = toBase32(fieldvalue,4)
+                            fieldvalue2 = tagMap[tag][i+1]
+                            pos_off = toBase32(fieldvalue2,10)
+                            fieldvalue = 'kindle:pos:fid:%s:off:%s' % (pos_fid, pos_off)
                         tmp[fieldname] = fieldvalue
                         if tag == 3:
                             tmp['text'] = ctoc_text.get(fieldvalue, 'Unknown Text')

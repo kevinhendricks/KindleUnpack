@@ -20,9 +20,15 @@ class MobiIndex:
             data = sect.loadSection(idx)
             idxhdr = self.parseINDXHeader(data)
             IndexCount = idxhdr['count']
-            if idxhdr['nctoc'] == 1:
-                cdata = sect.loadSection(idx + IndexCount + 1)
-                ctoc_text = self.readCTOC(cdata)
+            # handle the case of multiple sections used for CTOC
+            rec_off = 0
+            off = idx + IndexCount + 1
+            for j in range(idxhdr['nctoc']):
+                cdata = sect.loadSection(off + j)
+                ctocdict = self.readCTOC(cdata)
+                for k in ctocdict.keys():
+                    ctoc_text[k + rec_off] = ctocdict[k]
+                rec_off += 0x10000
             tagSectionStart = idxhdr['len']
             controlByteCount, tagTable = readTagSection(tagSectionStart, data)
             if DEBUG:

@@ -236,7 +236,7 @@ class mobi_split:
 
         # create the standalone mobi7
         num_sec = getint(datain,number_of_pdb_records,'H')
-        # remove BOUNDARY up to but not including EOF record
+        # remove BOUNDARY up to but not including ELF record
         self.result_file7 = deletesectionrange(datain,datain_kf8-1,num_sec-2)
         # check if there are SRCS records and delete them
         srcs = getint(datain_rec0,srcs_index)
@@ -260,7 +260,7 @@ class mobi_split:
         # 0x0040 = exth exists
         # 0x0010 = Not sure but this is always set so far
         fval, = struct.unpack_from('>L',datain_rec0, 0x80)
-        fval = fval & 0x0050
+        fval = fval & 0x00FF
         datain_rec0 = datain_rec0[:0x80] + struct.pack('>L',fval) + datain_rec0[0x84:]
 
         self.result_file7 = writesection(self.result_file7,0,datain_rec0)
@@ -299,7 +299,7 @@ class mobi_split:
         # old mobi with exth: 0x50, mobi7 part with exth: 0x1850, mobi8 part with exth: 0x1050
         # standalone mobi8 with exth: 0x0050
         fval, = struct.unpack_from('>L',datain_kfrec0, 0x80)
-        fval = fval & 0x0050
+        fval = fval & 0x00FF
         datain_kfrec0 = datain_kfrec0[:0x80] + struct.pack('>L',fval) + datain_kfrec0[0x84:]
 
         # properly update other index pointers that have been shifted by the insertion of images
