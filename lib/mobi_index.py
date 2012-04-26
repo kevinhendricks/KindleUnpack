@@ -6,7 +6,7 @@ DEBUG = False
 import sys
 import array, struct, os, re
 
-from mobi_utils import toHex, toBin, getVariableWidthValue, getLanguage, readTagSection, toBase32, fromBase32
+from mobi_utils import toHex, toBin
 
 class MobiIndex:
     def __init__(self, sect):
@@ -18,7 +18,7 @@ class MobiIndex:
         ctoc_text = {}
         if idx != 0xffffffff:
             data = sect.loadSection(idx)
-            idxhdr = self.parseINDXHeader(data)
+            idxhdr, hordt1, hordt2 = self.parseINDXHeader(data)
             IndexCount = idxhdr['count']
             # handle the case of multiple sections used for CTOC
             rec_off = 0
@@ -32,11 +32,12 @@ class MobiIndex:
             tagSectionStart = idxhdr['len']
             controlByteCount, tagTable = readTagSection(tagSectionStart, data)
             if DEBUG:
+                print "ControlByteCount is", controlByteCount
                 print "IndexCount is", IndexCount
                 print "TagTable: %s" % tagTable
             for i in range(idx + 1, idx + 1 + IndexCount):
                 data = sect.loadSection(i)
-                hdrinfo = self.parseINDXHeader(data)
+                hdrinfo, ordt1, ordt2 = self.parseINDXHeader(data)
                 idxtPos = hdrinfo['start']
                 entryCount = hdrinfo['count']
                 if DEBUG:
@@ -54,12 +55,15 @@ class MobiIndex:
                     endPos = idxPositions[j+1]
                     textLength = ord(data[startPos])
                     text = data[startPos+1:startPos+1+textLength]
+                    if hordt2 is not None:
+                        text = ''.join(chr(hordt2[ord(x)]) for x in text)
                     tagMap = self.getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     outtbl.append([text, tagMap])
                     if DEBUG:
                         print tagMap
                         print text
         return outtbl, ctoc_text
+
 
     def getTagMap(self, controlByteCount, tagTable, entryData, startPos, endPos):
         '''
@@ -81,6 +85,10 @@ class MobiIndex:
             if endFlag == 0x01:
                 controlByteIndex += 1
                 continue
+            cbyte = ord(entryData[startPos + controlByteIndex])
+            if DEBUG:
+                print "Control Byte Index %0x , Control Byte Value %0x" % (controlByteIndex, cbyte)
+         
             value = ord(entryData[startPos + controlByteIndex]) & mask
             if value != 0:
                 if value == mask:
@@ -151,6 +159,7 @@ class MobiIndex:
             value = value >> 1
         return count
 
+
     def parseINDXHeader(self, data):
         "read INDX header"
         if not data[:4] == 'INDX':
@@ -165,12 +174,32 @@ class MobiIndex:
         header = {}
         for n in range(num):
             header[words[n]] = values[n]
+
+        ordt1 = None
+        ordt2 = None
+
+        ocnt, oentries, op1, op2, otagx  = struct.unpack_from('>LLLLL',data, 0xa4)
+        if  header['code'] == 0xfdea or ocnt != 0 or oentries > 0:
+            # horribly hacked up ESP (sample) mobi books use two ORDT sections but never specify
+            # them in the proper place in the header.  They seem to be codepage 65002 which seems
+            # to be some sort of strange EBCDIC utf-8 or 16 encoded strings
+
+            # so we need to look for them and store them away to process leading text
+            # ORDT1 has 1 byte long entries, ORDT2 has 2 byte long entries
+            # we only ever seem to use the seocnd but ...
+            assert(ocnt == 1)
+            assert(data[op1:op1+4] == b'ORDT')
+            assert(data[op2:op2+4] == b'ORDT')
+            ordt1 = struct.unpack_from('>%dB' % oentries, data, op1+4)
+            ordt2 = struct.unpack_from('>%dH' % oentries, data, op2+4)
+
         if DEBUG:
             print "parsed INDX header:"
             for n in words:
                 print n, "%X" % header[n],
             print
-        return header
+        return header, ordt1, ordt2
+
 
     def readCTOC(self, txtdata):
         # read all blocks from CTOC
@@ -191,3 +220,43 @@ class MobiIndex:
                 print idx_offs, name
             ctoc_data[idx_offs] = name
         return ctoc_data
+
+
+def getVariableWidthValue(data, offset):
+    '''
+    Decode variable width value from given bytes.
+
+    @param data: The bytes to decode.
+    @param offset: The start offset into data.
+    @return: Tuple of consumed bytes count and decoded value.
+    '''
+    value = 0
+    consumed = 0
+    finished = False
+    while not finished:
+        v = data[offset + consumed]
+        consumed += 1
+        if ord(v) & 0x80:
+            finished = True
+        value = (value << 7) | (ord(v) & 0x7f)
+    return consumed, value
+
+
+def readTagSection(start, data):
+    '''
+    Read tag section from given data.
+
+    @param start: The start position in the data.
+    @param data: The data to process.
+    @return: Tuple of control byte count and list of tag tuples.
+    '''
+    tags = []
+    assert data[start:start+4] == "TAGX"
+    firstEntryOffset, = struct.unpack_from('>L', data, start + 0x04)
+    controlByteCount, = struct.unpack_from('>L', data, start + 0x08)
+
+    # Skip the first 12 bytes already read above.
+    for i in range(12, firstEntryOffset, 4):
+        pos = start + i
+        tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
+    return controlByteCount, tags

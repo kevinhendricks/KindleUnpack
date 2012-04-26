@@ -241,7 +241,7 @@ class mobi_split:
         # check if there are SRCS records and delete them
         srcs = getint(datain_rec0,srcs_index)
         num_srcs = getint(datain_rec0,srcs_count)
-        if srcs > 0:
+        if srcs != 0xffffffff and num_srcs > 0:
             self.result_file7 = deletesectionrange(self.result_file7,srcs,srcs+num_srcs-1)
             datain_rec0 = writeint(datain_rec0,srcs_index,0xffffffff)
             datain_rec0 = writeint(datain_rec0,srcs_count,0)
@@ -306,7 +306,7 @@ class mobi_split:
         ofs_list = [(kf8_last_content_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
         for ofs,sz in ofs_list:
             n = getint(datain_kfrec0,ofs,sz)
-            if n>0:
+            if n != 0xffffffff:
                 datain_kfrec0 = writeint(datain_kfrec0,ofs,n+lastimage-firstimage+1,sz)
         self.result_file8 = writesection(self.result_file8,0,datain_kfrec0)
 

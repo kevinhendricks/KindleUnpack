@@ -188,24 +188,6 @@ def readTagSection(start, data):
         tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
     return controlByteCount, tags
 
-def read_zlib_header(header):
-    header = bytearray(header)
-    # See sec 2.2 of RFC 1950 for the zlib stream format
-    # http://www.ietf.org/rfc/rfc1950.txt
-    if (header[0]*256 + header[1])%31 != 0:
-        return None, 'Bad zlib header, FCHECK failed'
-
-    cmf = header[0] & 0b1111
-    cinfo = header[0] >> 4
-    if cmf != 8:
-        return None, 'Unknown zlib compression method: %d'%cmf
-    if cinfo > 7:
-        return None, 'Invalid CINFO field in zlib header: %d'%cinfo
-    fdict = (header[1]&0b10000)>>5
-    if fdict != 0:
-        return None, 'FDICT based zlib compression not supported'
-    wbits = cinfo + 8
-    return wbits, None
 
 def mangle_fonts(encryption_key, data):
     """

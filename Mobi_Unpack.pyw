@@ -4,6 +4,7 @@
 import sys
 sys.path.append('lib')
 import os, os.path, urllib
+os.environ['PYTHONIOENCODING'] = "utf-8"
 import subprocess
 from subprocess import Popen, PIPE, STDOUT
 import subasyncio
@@ -97,7 +98,6 @@ class MainDialog(Tkinter.Frame):
     # post output from subprocess in scrolled text widget
     def showCmdOutput(self, msg):
         if msg and msg !='':
-            # msg = msg.encode('utf-8')
             if sys.platform.startswith('win'):
                 msg = msg.replace('\r\n','\n')
             self.stext.insert(Tkconstants.END,msg)
@@ -106,15 +106,20 @@ class MainDialog(Tkinter.Frame):
 
     # run as a subprocess via pipes and collect stdout
     def mobirdr(self, options, infile, outdir):
+        pengine = sys.executable
+        if pengine is None or pengine == '':
+            pengine = "python"
+        pengine = os.path.normpath(pengine)
         # os.putenv('PYTHONUNBUFFERED', '1')
-        cmdline = 'python ./lib/mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
+        cmdline = pengine + ' ./lib/mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
         if sys.platform[0:3] == 'win':
-            search_path = os.environ['PATH']
-            search_path = search_path.lower()
-            if search_path.find('python') >= 0: 
-                cmdline = 'python lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
-            else :
-                cmdline = 'lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
+            # search_path = os.environ['PATH']
+            # search_path = search_path.lower()
+            # if search_path.find('python') >= 0: 
+            #     cmdline = 'python lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
+            # else :
+            #     cmdline = 'lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
+            cmdline = pengine + ' lib\\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
 
         cmdline = cmdline.encode(sys.getfilesystemencoding())
         p2 = Process(cmdline, shell=True, bufsize=1, stdin=None, stdout=PIPE, stderr=PIPE, close_fds=False)
@@ -128,7 +133,7 @@ class MainDialog(Tkinter.Frame):
             parent=None, title='Select Unencrypted Mobi eBook File',
             initialdir=cwd,
             initialfile=None,
-            defaultextension='.prc', filetypes=[('Mobi PRC eBook File', '.prc'), ('Mobi AZW eBook File', '.azw'), ('Mobi eBook File', '.mobi'), ('Mobi AZW4 Print Replica', '.azw4'),('All Files', '.*')])
+            defaultextension='.prc', filetypes=[('Mobi PRC eBook File', '.prc'), ('Mobi AZW eBook File', '.azw'), ('Mobi eBook File', '.mobi'), ('Mobi AZW4 Print Replica', '.azw4'),('Mobi Version 8', '.azw3'),('All Files', '.*')])
         if mobipath:
             mobipath = os.path.normpath(mobipath)
             self.mobipath.delete(0, Tkconstants.END)
@@ -186,7 +191,6 @@ class MainDialog(Tkinter.Frame):
         log += 'Options = "' + options + '"\n'
         log += '\n\n'
         log += 'Please Wait ...\n\n'
-        log = log.encode('utf-8')
         self.stext.insert(Tkconstants.END,log)
         self.p2 = self.mobirdr(options, mobipath, outdir)
 

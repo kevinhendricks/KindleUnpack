@@ -51,6 +51,8 @@
 #  0.45 - sync to version in the new Mobi_Unpack plugin
 #  0.46 - fixes for: obfuscated fonts, improper toc links and ncx, add support for opentype fonts
 #  0.47 - minor opf improvements
+#  0.48 - ncx link fixes
+#  0.49 - use azw3 when splitting mobis
  
 DEBUG = False
 """ Set to True to print debug information. """
@@ -85,7 +87,7 @@ import array, struct, os, re, imghdr, zlib, zipfile
 import getopt, binascii
 
 # import the mobiunpack support libraries
-from mobi_utils import getLanguage, toHex, fromBase32, toBase32, read_zlib_header, mangle_fonts
+from mobi_utils import getLanguage, toHex, fromBase32, toBase32, mangle_fonts
 from mobi_uncompress import HuffcdicReader, PalmdocReader, UncompressedReader
 from mobi_opf import OPFProcessor
 from mobi_html import HTMLProcessor, XHTMLK8Processor
@@ -704,21 +706,7 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                     font_data = bytes(buf)
                 if fflags & 0x0001:
                     # ZLIB compressed data
-                    wbits, err = read_zlib_header(font_data[:2])
-                    if err is None:
-                        adler32, = struct.unpack_from('>I', font_data, len(font_data) - 4)
-                        font_data = zlib.decompress(font_data[2:-4], -wbits, usize)
-                        if len(font_data) != usize:
-                            print 'Font Decompression Error: Uncompressed font size mismatch'
-                        if False:
-                            # For some reason these almost never match, probably Amazon has a
-                            # buggy Adler32 implementation
-                            sig = (zlib.adler32(font_data) & 0xffffffff)
-                            if sig != adler32:
-                                print 'Font Decompression Error'
-                                print 'Adler checksum did not match. Stored: %d Calculated: %d' % (adler32, sig)
-                    else:
-                        print "Error Decoding Font", str(err)
+                    font_data = zlib.decompress(font_data)
                 hdr = font_data[0:4]
                 if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
                     ext = '.ttf'
@@ -808,10 +796,14 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             if 'StartOffset' in metadata.keys():
                 starts = metadata['StartOffset']
                 last_start = starts.pop()
-                if int(last_start) == 0xffffffff:
-                    last_start = '0'
-                filename, partnum, beg, end = k8proc.getFileInfo(int(last_start))
-                idtext = k8proc.getIDTag(int(last_start))
+                last_start = int(last_start)
+                if last_start == 0xffffffff:
+                    last_start = 0
+                # Argh!!  Some metadata StartOffsets are the row number of the divtbl
+                # while others are a position in the file - Not sure how to deal with this issue
+                # Safer to assume it is a position
+                seq, idtext = k8proc.getDivTblInfo(last_start)
+                filename, idtext = k8proc.getIDTagByPosFid(toBase32(seq), '0000000000')
                 linktgt = filename
                 if idtext != '':
                     linktgt += '#' + idtext
@@ -924,7 +916,7 @@ def unpackBook(infile, outdir):
         mobisplit = mobi_split(infile)
         if mobisplit.combo:
             outmobi7 = os.path.join(files.outdir, 'mobi7-'+files.getInputFileBasename() + '.mobi')
-            outmobi8 = os.path.join(files.outdir, 'mobi8-'+files.getInputFileBasename() + '.mobi')
+            outmobi8 = os.path.join(files.outdir, 'mobi8-'+files.getInputFileBasename() + '_nodrm.azw3')
             file(outmobi7, 'wb').write(mobisplit.getResult7())
             file(outmobi8, 'wb').write(mobisplit.getResult8())
 
@@ -1028,9 +1020,9 @@ def main(argv=sys.argv):
     global DEBUG
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "MobiUnpack 0.47"
-    print "  Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-    print "  With Additions by P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "MobiUnpack 0.50"
+    print "   Based on initial version Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
+    print "   Extensions / Improvements all by  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hdrs")
@@ -1061,7 +1053,7 @@ def main(argv=sys.argv):
         outdir = os.path.splitext(infile)[0]
 
     infileext = os.path.splitext(infile)[1].upper()
-    if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW4']:
+    if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW3', '.AZW4']:
         print "Error: first parameter must be a Kindle/Mobipocket ebook or a Kindle/Print Replica ebook."
         return 1
 
