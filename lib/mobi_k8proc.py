@@ -39,9 +39,14 @@ class K8Processor:
             for j in xrange(len(self.fdsttbl)):
                 print "  %d - %0x" % (j, self.fdsttbl[j])
 
+
         # read/process skeleton index info to create the skeleton table
         skeltbl = []
         if self.skelidx != 0xffffffff:
+            # for i in xrange(2):
+            #     fname = 'skel%04d.dat' % i
+            #     data = self.sect.loadSection(self.skelidx + i)
+            #     file(fname, 'wb').write(data)
             outtbl, ctoc_text = self.mi.getIndexData(self.skelidx)
             fileptr = 0
             for [text, tagMap] in outtbl:
@@ -58,6 +63,10 @@ class K8Processor:
         # read/process the div index to create to <div> (and <p>) table
         divtbl = []
         if self.dividx != 0xffffffff:
+            # for i in xrange(3):
+            #     fname = 'div%04d.dat' % i
+            #     data = self.sect.loadSection(self.dividx + i)
+            #     file(fname, 'wb').write(data)
             outtbl, ctoc_text = self.mi.getIndexData(self.dividx)
             for [text, tagMap] in outtbl:
                 # insert position, ctoc offset (aidtext), file number, sequence number, start position, length
@@ -74,6 +83,10 @@ class K8Processor:
         # read / process other index <guide> element of opf
         othtbl = []
         if self.othidx != 0xffffffff:
+            # for i in xrange(3):
+            #     fname = 'oth%04d.dat' % i
+            #     data = self.sect.loadSection(self.othidx + i)
+            #     file(fname, 'wb').write(data)
             outtbl, ctoc_text = self.mi.getIndexData(self.othidx)
             for [text, tagMap] in outtbl:
                 # ref_type, ref_title, div/frag number
@@ -119,14 +132,12 @@ class K8Processor:
         self.partinfo = []
         divptr = 0
         baseptr = 0
+        cnt = 0
         for [skelnum, skelname, divcnt, skelpos, skellen] in self.skeltbl:
             baseptr = skelpos + skellen
             skeleton = text[skelpos: baseptr]
             for i in range(divcnt):
                 [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[divptr]
-                if self.DEBUG:
-                    print "    moving div/frag %d starting at %d of length %d" % (divptr, startpos, length)
-                    print "        inside of skeleton number %d at postion %d" %  (skelnum, insertpos)
                 if i == 0:
                     aidtext = idtext[12:-2]
                     filename = 'part%04d.xhtml' % filenum
@@ -135,8 +146,12 @@ class K8Processor:
                 skeleton = skeleton[0:insertpos] + slice + skeleton[insertpos:]
                 baseptr = baseptr + length
                 divptr += 1
+            cnt += 1
             self.parts.append(skeleton)
             self.partinfo.append([skelnum, 'Text', filename, skelpos, baseptr, aidtext])
+
+        # assembled_text = "".join(self.parts)
+        # file('assembled_text.dat','wb').write(assembled_text)
 
         # The primary css style sheet is typically stored next followed by any
         # snippets of code that were previously inlined in the
@@ -196,7 +211,8 @@ class K8Processor:
 
             self.flows[j] = flowpart
             self.flowinfo.append([type, format, dir, fname])
-        
+
+
         if self.DEBUG:
             print "\nFlow Map:  %d entries" % len(self.flowinfo)
             for fi in self.flowinfo:
@@ -207,7 +223,7 @@ class K8Processor:
             for pi in self.partinfo:
                 print pi
 
-        if False:  # self.DEBUG:
+        if False: #self.Debug:
             # dump all of the locations of the aid tags used in TEXT
             # find id links only inside of tags
             #    inside any < > pair find all "aid=' and return whatever is inside the quotes
@@ -217,13 +233,28 @@ class K8Processor:
             print "\npositions of all aid= pieces"
             id_pattern = re.compile(r'''<[^>]*\said\s*=\s*['"]([^'"]*)['"][^>]*>''',re.IGNORECASE)
             for m in re.finditer(id_pattern, rawML):
-                print "%0x %s %0x" % (m.start(), m.group(1), fromBase32(m.group(1)))
                 [filename, partnum, start, end] = self.getFileInfo(m.start())
-                print "   in  %d %0x %0x" % (partnum, start, end)
+                [seqnum, idtext] = self.getDivTblInfo(m.start())
+                value = fromBase32(m.group(1))
+                print "  aid: %s value: %d at: %d -> part: %d, start: %d, end: %d" % (m.group(1), value, m.start(), partnum, start, end)
+                print "       %s  divtbl entry %d" % (idtext, seqnum) 
 
         return
 
-    # get information about the part (file) that exists at pos in oriignal rawML
+
+    # get information div table entry by pos
+    def getDivTblInfo(self, pos):
+        baseptr = 0
+        for j in xrange(len(self.divtbl)):
+            [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[j]
+            if pos >= insertpos and pos < (insertpos + length):
+                return seqnum, 'in: ' + idtext
+            if pos < insertpos:
+                return seqnum, 'before: ' + idtext
+        return None, None
+
+
+    # get information about the part (file) that exists at pos in original rawML
     def getFileInfo(self, pos):
         for [partnum, dir, filename, start, end, aidtext] in self.partinfo:
             if pos >= start and pos < end:
@@ -282,18 +313,17 @@ class K8Processor:
         textblock = self.parts[pn]
         idtbl = []
         npos = pos - skelpos
+        # if npos inside a tag then search all text before the its end of tag marker
         pgt = textblock.find('>',npos)
         plt = textblock.find('<',npos)
-        # if npos inside a tag then search all text before the its end of tag marker
-        # else not in a tag need to search the preceding tag
-        if plt == npos  or  pgt < plt:
+        if plt == npos or pgt < plt:
             npos = pgt + 1
-        textblock = textblock[0:npos]
         # find id links only inside of tags
         #    inside any < > pair find all "id=' and return whatever is inside the quotes
         #    [^>]* means match any amount of chars except for  '>' char
         #    [^'"] match any amount of chars except for the quote character
         #    \s* means match any amount of whitespace
+        textblock = textblock[0:npos]
         id_pattern = re.compile(r'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"][^>]*>''',re.IGNORECASE)
         for m in re.finditer(id_pattern, textblock):
             idtbl.append([m.start(), m.group(1)])
@@ -343,6 +373,8 @@ class K8Processor:
     def getGuideText(self):
         guidetext = ''
         for [ref_type, ref_title, fileno] in self.othtbl:
+            if ref_type == 'thumbimagestandard':
+                continue
             [pos, idtext, filenum, seqnm, startpos, length] = self.divtbl[fileno]
             [pn, dir, filename, skelpos, skelend, aidtext] = self.getSkelInfo(pos)
             idtext = self.getIDTag(pos)
