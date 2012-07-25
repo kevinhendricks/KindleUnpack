@@ -254,13 +254,14 @@ class mobi_split:
 
         # need to reset flags stored in 0x80-0x83
         # old mobi with exth: 0x50, mobi7 part with exth: 0x1850, mobi8 part with exth: 0x1050
-        # Bit Flags?
-        # 0x1000 = KF8 dual mobi
-        # 0x0800 = means this Header points to *shared* images/resource/fonts
+        # Bit Flags
+        # 0x1000 = Bit 12 indicates if embedded fonts are used or not
+        # 0x0800 = means this Header points to *shared* images/resource/fonts ??
         # 0x0040 = exth exists
         # 0x0010 = Not sure but this is always set so far
         fval, = struct.unpack_from('>L',datain_rec0, 0x80)
-        fval = fval & 0x00FF
+        fval = fval & 0x1FFF
+        fval |=  0x0800
         datain_rec0 = datain_rec0[:0x80] + struct.pack('>L',fval) + datain_rec0[0x84:]
 
         self.result_file7 = writesection(self.result_file7,0,datain_rec0)
@@ -298,8 +299,14 @@ class mobi_split:
         # need to reset flags stored in 0x80-0x83
         # old mobi with exth: 0x50, mobi7 part with exth: 0x1850, mobi8 part with exth: 0x1050
         # standalone mobi8 with exth: 0x0050
+        # Bit Flags
+        # 0x1000 = Bit 12 indicates if embedded fonts are used or not
+        # 0x0800 = means this Header points to *shared* images/resource/fonts ??
+        # 0x0040 = exth exists
+        # 0x0010 = Not sure but this is always set so far
         fval, = struct.unpack_from('>L',datain_kfrec0, 0x80)
-        fval = fval & 0x00FF
+        fval = fval & 0x1FFF
+        fval |= 0x0800
         datain_kfrec0 = datain_kfrec0[:0x80] + struct.pack('>L',fval) + datain_kfrec0[0x84:]
 
         # properly update other index pointers that have been shifted by the insertion of images
