@@ -53,6 +53,10 @@
 #  0.47 - minor opf improvements
 #  0.48 - ncx link fixes
 #  0.49 - use azw3 when splitting mobis
+#  0.50 - unknown change
+#  0.51 - fix for converting filepos links to hrefs, Added GPL3 notice, made KF8 extension just '.azw3'
+#  0.52 - fix for cover metadata (no support for Mobipocket Creator)
+#  0.53 - fix for proper identication of embedded fonts, added new metadata items
  
 DEBUG = False
 """ Set to True to print debug information. """
@@ -116,7 +120,7 @@ class fileNames:
         if not os.path.exists(self.mobi7dir):
             os.mkdir(self.mobi7dir)
 
-        self.imgdir = os.path.join(self.mobi7dir, 'images')
+        self.imgdir = os.path.join(self.mobi7dir, 'Images')
         if not os.path.exists(self.imgdir):
             os.mkdir(self.imgdir)
         self.outbase = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0])
@@ -516,6 +520,11 @@ class MobiHeader:
                 501 : 'CDE Type',
                 502 : 'last_update_time',
                 503 : 'Updated Title',
+                504 : 'ASIN (504)',
+                524 : 'Language (524)',
+                525 : 'TextDirection',
+                528 : 'Unknown_Logical_Value (528)',
+                535 : 'Kindlegen Build-Rev Number',
         }
         id_map_values = {
                 115 : 'sample',
@@ -916,7 +925,7 @@ def unpackBook(infile, outdir):
         mobisplit = mobi_split(infile)
         if mobisplit.combo:
             outmobi7 = os.path.join(files.outdir, 'mobi7-'+files.getInputFileBasename() + '.mobi')
-            outmobi8 = os.path.join(files.outdir, 'mobi8-'+files.getInputFileBasename() + '_nodrm.azw3')
+            outmobi8 = os.path.join(files.outdir, 'mobi8-'+files.getInputFileBasename() + '.azw3')
             file(outmobi7, 'wb').write(mobisplit.getResult7())
             file(outmobi8, 'wb').write(mobisplit.getResult8())
 
@@ -1020,9 +1029,13 @@ def main(argv=sys.argv):
     global DEBUG
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "MobiUnpack 0.50"
-    print "   Based on initial version Copyright (c) 2009 Charles M. Hannum <root@ihack.net>"
-    print "   Extensions / Improvements all by  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "MobiUnpack 0.53"
+    print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
+    print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "   This program is free software: you can redistribute it and/or modify"
+    print "   it under the terms of the GNU General Public License as published by"
+    print "   the Free Software Foundation, version 3."
+ 
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hdrs")

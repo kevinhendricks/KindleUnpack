@@ -64,18 +64,16 @@ class HTMLProcessor:
 
         # put in the hrefs
         print "Insert hrefs into html"
-        # Two different regex search and replace routines.
-        # Best results are with the second so far IMO (DiapDealer).
-
-        #link_pattern = re.compile(r'''<a filepos=['"]{0,1}0*(\d+)['"]{0,1} *>''', re.IGNORECASE)
-        link_pattern = re.compile(r'''<a\s+filepos=['"]{0,1}0*(\d+)['"]{0,1}(.*?)>''', re.IGNORECASE)
-        #srctext = link_pattern.sub(r'''<a href="#filepos\1">''', srctext)
-        srctext = link_pattern.sub(r'''<a href="#filepos\1"\2>''', srctext)
+        # There doesn't seem to be a standard, so search as best as we can
+        
+        link_pattern = re.compile(r'''<a([^>]*?)filepos=['"]{0,1}0*(\d+)['"]{0,1}([^>]*?)>''', re.IGNORECASE)
+        srctext = link_pattern.sub(r'''<a\1href="#filepos\2"\3>''', srctext)
 
         # remove empty anchors
         print "Remove empty anchors from html"
         srctext = re.sub(r"<a/>",r"", srctext)
-
+        srctext = re.sub(r"<a ?></a>",r"", srctext)
+        
         # convert image references
         print "Insert image references into html"
         # split string into image tag pieces and other pieces
@@ -93,7 +91,7 @@ class HTMLProcessor:
                 if imageName is None:
                     print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
                 else:
-                    replacement = 'src="images/' + imageName + '"'
+                    replacement = 'src="Images/' + imageName + '"'
                     tag = image_index_pattern.sub(replacement, tag, 1)
             srcpieces[i] = tag
         srctext = "".join(srcpieces)
