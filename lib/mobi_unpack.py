@@ -19,14 +19,14 @@
 #  0.23 - Now output Start guide item
 #  0.24 - Set firstaddl value for 'TEXtREAd'
 #  0.25 - Now added character set metadata to html file for utf-8 files.
-#  0.26 - Dictionary support added. Image handling speed improved. 
+#  0.26 - Dictionary support added. Image handling speed improved.
 #         For huge files create temp files to speed up decoding.
 #         Language decoding fixed. Metadata is now converted to utf-8 when written to opf file.
-#  0.27 - Add idx:entry attribute "scriptable" if dictionary contains entry length tags. 
-#         Don't save non-image sections as images. Extract and save source zip file 
+#  0.27 - Add idx:entry attribute "scriptable" if dictionary contains entry length tags.
+#         Don't save non-image sections as images. Extract and save source zip file
 #         included by kindlegen as kindlegensrc.zip.
 #  0.28 - Added back correct image file name extensions, created FastConcat class to simplify and clean up
-#  0.29 - Metadata handling reworked, multiple entries of the same type are now supported. 
+#  0.29 - Metadata handling reworked, multiple entries of the same type are now supported.
 #         Several missing types added.
 #         FastConcat class has been removed as in-memory handling with lists is faster, even for huge files.
 #  0.30 - Add support for outputting **all** metadata values - encode content with hex if of unknown type
@@ -41,9 +41,9 @@
 #  0.37 - separate output, add command line switches to control, interface to Mobi_Unpack.pyw
 #  0.38 - improve split function by resetting flags properly, fix bug in Thumbnail Images
 #  0.39 - improve split function so that ToC info is not lost for standalone mobi8s
-#  0.40 - make mobi7 split match official versions, add support for graphic novel metadata, 
+#  0.40 - make mobi7 split match official versions, add support for graphic novel metadata,
 #         improve debug for KF8
-#  0.41 - fix when StartOffset set to 0xffffffff, fix to work with older mobi versions, 
+#  0.41 - fix when StartOffset set to 0xffffffff, fix to work with older mobi versions,
 #         fix other minor metadata issues
 #  0.42 - add new class interface to allow it to integrate more easily with internal calibre routines
 #  0.43 - bug fixes for new class interface
@@ -56,8 +56,10 @@
 #  0.50 - unknown change
 #  0.51 - fix for converting filepos links to hrefs, Added GPL3 notice, made KF8 extension just '.azw3'
 #  0.52 - fix for cover metadata (no support for Mobipocket Creator)
-#  0.53 - fix for proper identication of embedded fonts, added new metadata items
- 
+#  0.53 - fix for proper identification of embedded fonts, added new metadata items
+#  0.54 - Added error-handling so wonky embedded fonts don't bomb the whole unpack process,
+#         entity escape KF8 metadata to ensure valid OPF.
+
 DEBUG = False
 """ Set to True to print debug information. """
 
@@ -186,6 +188,8 @@ class fileNames:
                     fileout = os.path.join(self.k8fonts,name)
                 elif name.endswith(".otf"):
                     fileout = os.path.join(self.k8fonts,name)
+                elif name.endswith(".failed"):
+                    fileout = os.path.join(self.k8fonts,name)
                 else:
                     fileout = os.path.join(self.k8images,name)
                 data = file(filein,'rb').read()
@@ -204,7 +208,7 @@ class fileNames:
         container += '    </rootfiles>\n</container>\n'
         fileout = os.path.join(self.k8metainf,'container.xml')
         file(fileout,'wb').write(container)
-        
+
         if obfuscate_data:
             encryption = '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" \
 xmlns:enc="http://www.w3.org/2001/04/xmlenc#" xmlns:deenc="http://ns.adobe.com/digitaleditions/enc">\n'
@@ -702,32 +706,41 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 # bytes 12 - 15:  offset to start of compressed font data
                 # bytes 16 - 19:  length of xor string stored before the start of the comnpress font data
                 # bytes 19 - 23:  start of xor string
-                usize, fflags, dstart, xor_len, xor_start = struct.unpack_from('>LLLLL',data,4)
-                font_data = data[dstart:]
-                extent = len(font_data)
-                extent = min(extent, 1040)
-                if fflags & 0x0002:
-                    # obfuscated so need to de-obfuscate the first 1040 bytes
-                    key = bytearray(data[xor_start: xor_start+ xor_len])
-                    buf = bytearray(font_data)
-                    for n in xrange(extent):
-                        buf[n] ^=  key[n%xor_len]
-                    font_data = bytes(buf)
-                if fflags & 0x0001:
-                    # ZLIB compressed data
-                    font_data = zlib.decompress(font_data)
-                hdr = font_data[0:4]
-                if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
-                    ext = '.ttf'
-                elif hdr == 'OTTO':
-                    ext = '.otf'
-                else:
-                    print "Warning: unknown font header %s" % hdr.encode('hex')
-                    ext = '.dat'
                 fontname = "font%05d" % (1+i-beg)
+                ext = '.dat'
+                font_error = False
+                font_data = data # Raw section data preserved if an error occurs
+                try:
+                    usize, fflags, dstart, xor_len, xor_start = struct.unpack_from('>LLLLL',data,4)
+                except:
+                    print "    failed to extract font: ", fontname
+                    font_error = True
+                    ext = '.failed'
+                    pass
+                if not font_error:
+                    font_data = data[dstart:]
+                    extent = len(font_data)
+                    extent = min(extent, 1040)
+                    if fflags & 0x0002:
+                        # obfuscated so need to de-obfuscate the first 1040 bytes
+                        key = bytearray(data[xor_start: xor_start+ xor_len])
+                        buf = bytearray(font_data)
+                        for n in xrange(extent):
+                            buf[n] ^=  key[n%xor_len]
+                        font_data = bytes(buf)
+                    if fflags & 0x0001:
+                        # ZLIB compressed data
+                        font_data = zlib.decompress(font_data)
+                    hdr = font_data[0:4]
+                    if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
+                        ext = '.ttf'
+                    elif hdr == 'OTTO':
+                        ext = '.otf'
+                    else:
+                        print "Warning: unknown font header %s" % hdr.encode('hex')
+                    if (ext == '.ttf' or ext == '.otf') and (fflags & 0x0002):
+                        obfuscate_data.append(fontname + ext)
                 fontname += ext
-                if (ext == '.ttf' or ext == '.otf') and (fflags & 0x0002):
-                    obfuscate_data.append(fontname)
                 print "    extracting font: ", fontname
                 outfnt = os.path.join(files.imgdir, fontname)
                 file(outfnt, 'wb').write(font_data)
@@ -1029,13 +1042,13 @@ def main(argv=sys.argv):
     global DEBUG
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "MobiUnpack 0.53"
+    print "MobiUnpack 0.54"
     print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     print "   This program is free software: you can redistribute it and/or modify"
     print "   it under the terms of the GNU General Public License as published by"
     print "   the Free Software Foundation, version 3."
- 
+
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hdrs")
