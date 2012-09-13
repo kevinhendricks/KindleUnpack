@@ -2,6 +2,7 @@
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 import sys, os, re, uuid
+from xml.sax.saxutils import escape
 
 class OPFProcessor:
     def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False):
@@ -41,13 +42,13 @@ class OPFProcessor:
                 for value in metadata[key]:
                     # Strip all tag attributes for the closing tag.
                     closingTag = tag.split(" ")[0]
-                    data.append('<%s>%s</%s>\n' % (tag, value, closingTag))
+                    data.append('<%s>%s</%s>\n' % (tag, escape(value), closingTag))
                 del metadata[key]
 
         def handleMetaPairs(data, metadata, key, name):
             if key in metadata.keys():
                 for value in metadata[key]:
-                    data.append('<meta name="%s" content="%s" />\n' % (name, value))
+                    data.append('<meta name="%s" content="%s" />\n' % (name, escape(value)))
                 del metadata[key]
 
         data = []
