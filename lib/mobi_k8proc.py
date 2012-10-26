@@ -237,7 +237,7 @@ class K8Processor:
                 [seqnum, idtext] = self.getDivTblInfo(m.start())
                 value = fromBase32(m.group(1))
                 print "  aid: %s value: %d at: %d -> part: %d, start: %d, end: %d" % (m.group(1), value, m.start(), partnum, start, end)
-                print "       %s  divtbl entry %d" % (idtext, seqnum) 
+                print "       %s  divtbl entry %d" % (idtext, seqnum)
 
         return
 
