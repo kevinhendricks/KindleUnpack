@@ -90,7 +90,7 @@ class OPFProcessor:
                     data.append('<dc:subject BASICCode="'+codeList[i]+'">')
                 else:
                     data.append('<dc:subject>')
-                data.append(metadata['Subject'][i]+'</dc:subject>\n')
+                data.append(escape(metadata['Subject'][i])+'</dc:subject>\n')
             del metadata['Subject']
         handleTag(data, metadata, 'Description', 'dc:description')
         handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
@@ -144,13 +144,13 @@ class OPFProcessor:
         for metaName in META_TAGS:
             if metaName in metadata.keys():
                 for value in metadata[metaName]:
-                    data.append('<meta name="'+metaName+'" content="'+value+'" />\n')
+                    data.append('<meta name="'+metaName+'" content="'+escape(value)+'" />\n')
                     del metadata[metaName]
         for key in metadata.keys():
             for value in metadata[key]:
                 if key == 'StartOffset' and int(value) == 0xffffffff:
                     value = '0'
-                data.append('<meta name="'+key+'" content="'+value+'" />\n')
+                data.append('<meta name="'+key+'" content="'+escape(value)+'" />\n')
             del metadata[key]
         data.append('</metadata>\n')
         # build manifest
@@ -218,12 +218,12 @@ class OPFProcessor:
         if not self.printReplica:
             metaguidetext = ''
             if not self.isK8:
-                # get guide items from metadata
+                # get guide items from metadata (Err, it's been deleted L154?)
                 if 'StartOffset' in metadata.keys():
                     so = metadata.get('StartOffset')[0]
                     if int(so) == 0xffffffff:
                         so = '0'
-                    metaguidetext += '<reference type="text" href="'+self.filenames[0][1]+'#filepos'+metadata.get('StartOffset')[0]+'" />\n'
+                    metaguidetext += '<reference type="text" href="'+self.filenames[0][1]+'#filepos'+so+'" />\n'
                     del metadata['StartOffset']
             data.append('<guide>\n' + metaguidetext + self.guidetext + '</guide>\n')
         data.append('</package>\n')

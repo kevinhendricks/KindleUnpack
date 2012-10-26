@@ -167,15 +167,17 @@ def add_exth(rec0,exth_num,exth_bytes):
     return newrec0
 
 def read_exth(rec0,exth_num):
+    exth_values = []
     ebase,elen,enum = get_exth_params(rec0)
     ebase = ebase+12
     while enum>0:
         exth_id = getint(rec0,ebase)
         if exth_id == exth_num:
-            return rec0[ebase+8:ebase+getint(rec0,ebase+4)]
+            # We might have multiple exths, so build a list.
+            exth_values.append(rec0[ebase+8:ebase+getint(rec0,ebase+4)])
         enum = enum-1
         ebase = ebase+getint(rec0,ebase+4)
-    return ''
+    return exth_values
 
 def write_exth(rec0,exth_num,exth_bytes):
     ebase,elen,enum = get_exth_params(rec0)
@@ -199,18 +201,18 @@ def write_exth(rec0,exth_num,exth_bytes):
 def del_exth(rec0,exth_num):
     ebase,elen,enum = get_exth_params(rec0)
     ebase_idx = ebase+12
-    enum_idx = enum
-    while enum_idx>0:
+    enum_idx = 0
+    while enum_idx < enum:
         exth_id = getint(rec0,ebase_idx)
+        exth_size = getint(rec0,ebase_idx+4)
         if exth_id == exth_num:
-            dif = getint(rec0,ebase_idx+4)
             newrec0 = rec0
-            newrec0 = writeint(newrec0,title_offset,getint(newrec0,title_offset)-dif)
-            newrec0 = newrec0[:ebase_idx]+newrec0[ebase_idx+dif:]
-            newrec0 = newrec0[0:ebase+4]+struct.pack('>L',elen-dif)+struct.pack('>L',enum-1)+newrec0[ebase+12:]
+            newrec0 = writeint(newrec0,title_offset,getint(newrec0,title_offset)-exth_size)
+            newrec0 = newrec0[:ebase_idx]+newrec0[ebase_idx+exth_size:]
+            newrec0 = newrec0[0:ebase+4]+struct.pack('>L',elen-exth_size)+struct.pack('>L',enum-1)+newrec0[ebase+12:]
             return newrec0
-        enum_idx = enum_idx-1
-        ebase_idx = ebase_idx+getint(rec0,ebase_idx+4)
+        enum_idx += 1
+        ebase_idx = ebase_idx+exth_size
     return rec0
 
 
@@ -228,7 +230,9 @@ class mobi_split:
             self.combo = False
             return
         else:
-            datain_kf8, = struct.unpack_from('>L',exth121,0)
+            # only pay attention to first exth121
+            # (there should only be one)
+            datain_kf8, = struct.unpack_from('>L',exth121[0],0)
             if datain_kf8 == 0xffffffff:
                 self.combo = False
                 return
@@ -292,6 +296,14 @@ class mobi_split:
         target = getint(datain_kfrec0,first_image_record)
         self.result_file8 = insertsectionrange(datain,firstimage,lastimage,self.result_file8,target)
         datain_kfrec0 =readsection(self.result_file8,0)
+
+        # Only keep the correct EXTH 116 StartOffset, KG 2.5 carries over the one from the mobi7 part, which then points at garbage in the mobi8 part, and confuses FW 3.4
+        kf8starts = read_exth(datain_kfrec0,116)
+        # If we have multiple StartOffset, keep only the last one
+        kf8start_count = len(kf8starts)
+        while kf8start_count > 1:
+            kf8start_count -= 1
+            datain_kfrec0 = del_exth(datain_kfrec0,116)
 
         # update the EXTH 125 KF8 Count of Images/Fonts/Resources
         datain_kfrec0 = write_exth(datain_kfrec0,125,struct.pack('>L',lastimage-firstimage+1))

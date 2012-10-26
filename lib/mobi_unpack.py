@@ -59,6 +59,12 @@
 #  0.53 - fix for proper identification of embedded fonts, added new metadata items
 #  0.54 - Added error-handling so wonky embedded fonts don't bomb the whole unpack process,
 #         entity escape KF8 metadata to ensure valid OPF.
+#  0.55  Strip extra StartOffset EXTH from the mobi8 header when splitting, keeping only the relevant one
+#         For mobi8 files, don't generate duplicate guide entries from the metadata if we could extract one
+#         from the OTH table.
+#  0.56 - Added further entity escaping of OPF text.
+#         Allow unicode string file paths to be passed as arguments to the unpackBook method without blowing up later
+#         when the attempt to "re"-unicode a portion of that filename occurs in the process_all_mobi_headers method.
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -814,10 +820,13 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
 
             # collect information for the guide first
             guidetext = k8proc.getGuideText()
-            # add in any guide info from metadata, such as StartOffset
-            if 'StartOffset' in metadata.keys():
+            # if the guide was empty, add in any guide info from metadata, such as StartOffset
+            if not guidetext and 'StartOffset' in metadata.keys():
+                # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
+                # This seems to break on some devices that only honors the first StartOffset (FW 3.4), because it effectively points at garbage in the mobi8 part.
+                # Taking that into account, we only care about the *last* StartOffset, which should always be the correct one in these cases (the one actually pointing to the right place in the mobi8 part).
                 starts = metadata['StartOffset']
-                last_start = starts.pop()
+                last_start = starts[-1]
                 last_start = int(last_start)
                 if last_start == 0xffffffff:
                     last_start = 0
@@ -918,7 +927,10 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 replacetext = r'''href="'''+filenames[0][1]+r'''#filepos\1"'''
                 guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
                 guidetext += '\n'
-                guidetext = unicode(guidetext, mh.codec).encode("utf-8")
+                if isinstance(guidetext, unicode):
+                    guidetext = guidetext.decode(mh.codec).encode("utf-8")
+                else:
+                    guidetext = unicode(guidetext, mh.codec).encode("utf-8")
             opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
             opf.writeOPF()
     return
@@ -1042,7 +1054,7 @@ def main(argv=sys.argv):
     global DEBUG
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "MobiUnpack 0.54"
+    print "MobiUnpack 0.55"
     print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     print "   This program is free software: you can redistribute it and/or modify"
