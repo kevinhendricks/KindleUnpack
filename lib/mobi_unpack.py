@@ -65,6 +65,8 @@
 #  0.56 - Added further entity escaping of OPF text.
 #         Allow unicode string file paths to be passed as arguments to the unpackBook method without blowing up later
 #         when the attempt to "re"-unicode a portion of that filename occurs in the process_all_mobi_headers method.
+#  0.57 - Fixed eror when splitting Preview files downloaded from KDP website
+#  0.58 - Output original kindlegen build log ('CMET' record) if included in the package.
 
 DEBUG = False
 """ Set to True to print debug information. """
@@ -80,6 +82,9 @@ EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
 
 KINDLEGENSRC_FILENAME = "kindlegensrc.zip"
 """ The name for the kindlegen source archive. """
+
+KINDLEGENLOG_FILENAME = "kindlegenbuild.log"
+""" The name for the kindlegen build log. """
 
 K8_BOUNDARY = "BOUNDARY"
 """ The section data that divides K8 mobi ebooks. """
@@ -699,6 +704,14 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 print "    Info: File contains kindlegen source archive, extracting as %s" % KINDLEGENSRC_FILENAME
                 srcname = os.path.join(files.outdir, KINDLEGENSRC_FILENAME)
                 file(srcname, 'wb').write(data[16:])
+                imgnames.append(None)
+                continue
+            elif type == "CMET":
+                # The mobi file was created by kindlegen v2.7 or greater and contains the original build log.
+                # Extract the log and save it.
+                print "    Info: File contains kindlegen build log, extracting as %s" % KINDLEGENLOG_FILENAME
+                srcname = os.path.join(files.outdir, KINDLEGENLOG_FILENAME)
+                file(srcname, 'wb').write(data[10:])
                 imgnames.append(None)
                 continue
             elif type == "FONT":
