@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
 
 DEBUG_NCX = False
 
-import sys, os, struct, re
+import sys, os, struct, re, codecs
 
 from mobi_utils import readTagSection, getVariableWidthValue, toBase32
 from mobi_index import MobiIndex
@@ -32,7 +32,7 @@ class ncxExtract:
                 23: ['childn',0]
         }
         if self.ncxidx != 0xffffffff:
-            outtbl, ctoc_text = self.mi.getIndexData(self.ncxidx)
+            outtbl, ctoc_text = self.mi.getIndexData(self.ncxidx, "NCX")
             if DEBUG_NCX:
                 print ctoc_text
                 print outtbl

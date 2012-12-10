@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
 
 import sys, struct, re
 from mobi_index import MobiIndex
@@ -30,14 +30,14 @@ class K8Processor:
             header = self.sect.loadSection(self.fdst)
             if header[0:4] == "FDST":
                 num_sections, = struct.unpack_from('>L', header, 0x08)
-                sections = header[0x0c:]
-                self.fdsttbl = struct.unpack_from('>%dL' % (num_sections*2), sections, 0)[::2] + (0xfffffff, )
+                self.fdsttbl = struct.unpack_from('>%dL' % (num_sections*2), header, 12)[::2] + (mh.rawSize, )
+                sect.setsectiondescription(self.fdst,"KF8 FDST split info")
+                if self.DEBUG:
+                    print "\nFDST Section Map:  %d sections" % num_sections
+                    for j in xrange(num_sections):
+                         print "Section %d: 0x%08X - 0x%08X" % (j, self.fdsttbl[j],self.fdsttbl[j+1])
             else:
-                print "Error: K8 Mobi with Missing FDST info"
-        if self.DEBUG:
-            print "\nFDST Section Map:  %d entries" % len(self.fdsttbl)
-            for j in xrange(len(self.fdsttbl)):
-                print "  %d - %0x" % (j, self.fdsttbl[j])
+                print "\nError: K8 Mobi with Missing FDST info"
 
 
         # read/process skeleton index info to create the skeleton table
@@ -47,7 +47,7 @@ class K8Processor:
             #     fname = 'skel%04d.dat' % i
             #     data = self.sect.loadSection(self.skelidx + i)
             #     file(fname, 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.skelidx)
+            outtbl, ctoc_text = self.mi.getIndexData(self.skelidx, "KF8 Skeleton")
             fileptr = 0
             for [text, tagMap] in outtbl:
                 # file number, skeleton name, divtbl record count, start position, length
@@ -67,7 +67,7 @@ class K8Processor:
             #     fname = 'div%04d.dat' % i
             #     data = self.sect.loadSection(self.dividx + i)
             #     file(fname, 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.dividx)
+            outtbl, ctoc_text = self.mi.getIndexData(self.dividx, "KF8 Division")
             for [text, tagMap] in outtbl:
                 # insert position, ctoc offset (aidtext), file number, sequence number, start position, length
                 ctocoffset = tagMap[2][0]
@@ -87,7 +87,7 @@ class K8Processor:
             #     fname = 'oth%04d.dat' % i
             #     data = self.sect.loadSection(self.othidx + i)
             #     file(fname, 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.othidx)
+            outtbl, ctoc_text = self.mi.getIndexData(self.othidx, "KF8 Other (<guide> elements)")
             for [text, tagMap] in outtbl:
                 # ref_type, ref_title, div/frag number
                 ctocoffset = tagMap[1][0]
@@ -113,10 +113,6 @@ class K8Processor:
         for j in xrange(0, len(self.fdsttbl)-1):
             start = self.fdsttbl[j]
             end = self.fdsttbl[j+1]
-            if end == 0xffffffff:
-                end = len(rawML)
-                if self.DEBUG:
-                    print "splitting rawml starting at %d and ending at %d into flow piece %d" % (start, end, j)
             self.flows.append(rawML[start:end])
 
         # the first piece represents the xhtml text

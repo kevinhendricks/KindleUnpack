@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-
-DEBUG = False
+# -*- coding: utf-8 -*-
 
 import sys
 import array, struct, os, re
@@ -9,14 +7,16 @@ import array, struct, os, re
 from mobi_utils import toHex, toBin
 
 class MobiIndex:
-    def __init__(self, sect):
+    def __init__(self, sect, DEBUG = False):
         self.sect = sect
+        self.DEBUG = DEBUG
 
-    def getIndexData(self, idx):
+    def getIndexData(self, idx, label = "Unknown"):
         sect = self.sect
         outtbl = []
         ctoc_text = {}
         if idx != 0xffffffff:
+            sect.setsectiondescription(idx,"Main {0} INDX section".format(label))
             data = sect.loadSection(idx)
             idxhdr, hordt1, hordt2 = self.parseINDXHeader(data)
             IndexCount = idxhdr['count']
@@ -31,16 +31,17 @@ class MobiIndex:
                 rec_off += 0x10000
             tagSectionStart = idxhdr['len']
             controlByteCount, tagTable = readTagSection(tagSectionStart, data)
-            if DEBUG:
+            if self.DEBUG:
                 print "ControlByteCount is", controlByteCount
                 print "IndexCount is", IndexCount
                 print "TagTable: %s" % tagTable
             for i in range(idx + 1, idx + 1 + IndexCount):
+                sect.setsectiondescription(i,"Extra {1:d} {0} INDX section".format(label,i-idx))
                 data = sect.loadSection(i)
                 hdrinfo, ordt1, ordt2 = self.parseINDXHeader(data)
                 idxtPos = hdrinfo['start']
                 entryCount = hdrinfo['count']
-                if DEBUG:
+                if self.DEBUG:
                     print idxtPos, entryCount
                 # loop through to build up the IDXT position starts
                 idxPositions = []
@@ -59,7 +60,7 @@ class MobiIndex:
                         text = ''.join(chr(hordt2[ord(x)]) for x in text)
                     tagMap = self.getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     outtbl.append([text, tagMap])
-                    if DEBUG:
+                    if self.DEBUG:
                         print tagMap
                         print text
         return outtbl, ctoc_text
@@ -86,9 +87,9 @@ class MobiIndex:
                 controlByteIndex += 1
                 continue
             cbyte = ord(entryData[startPos + controlByteIndex])
-            if DEBUG:
+            if self.DEBUG:
                 print "Control Byte Index %0x , Control Byte Value %0x" % (controlByteIndex, cbyte)
-         
+
             value = ord(entryData[startPos + controlByteIndex]) & mask
             if value != 0:
                 if value == mask:
@@ -134,7 +135,7 @@ class MobiIndex:
             for char in entryData[dataStart:endPos]:
                 if char != chr(0x00):
                     print "Warning: There are unprocessed index bytes left: %s" % toHex(entryData[dataStart:endPos])
-                    if DEBUG:
+                    if self.DEBUG:
                         print "controlByteCount: %s" % controlByteCount
                         print "tagTable: %s" % tagTable
                         print "data: %s" % toHex(entryData[startPos:endPos])
@@ -193,7 +194,7 @@ class MobiIndex:
             ordt1 = struct.unpack_from('>%dB' % oentries, data, op1+4)
             ordt2 = struct.unpack_from('>%dH' % oentries, data, op2+4)
 
-        if DEBUG:
+        if self.DEBUG:
             print "parsed INDX header:"
             for n in words:
                 print n, "%X" % header[n],
@@ -213,9 +214,9 @@ class MobiIndex:
             pos, ilen = getVariableWidthValue(txtdata, offset)
             offset += pos
             #<len> next bytes: name
-            name = txtdata[offset:offset+ilen]
+            name = unicode(txtdata[offset:offset+ilen], 'windows-1252').encode('utf-8')
             offset += ilen
-            if DEBUG:
+            if self.DEBUG:
                 print "name length is ", ilen
                 print idx_offs, name
             ctoc_data[idx_offs] = name
@@ -250,13 +251,14 @@ def readTagSection(start, data):
     @param data: The data to process.
     @return: Tuple of control byte count and list of tag tuples.
     '''
+    controlByteCount = 0
     tags = []
-    assert data[start:start+4] == "TAGX"
-    firstEntryOffset, = struct.unpack_from('>L', data, start + 0x04)
-    controlByteCount, = struct.unpack_from('>L', data, start + 0x08)
+    if data[start:start+4] == "TAGX":
+        firstEntryOffset, = struct.unpack_from('>L', data, start + 0x04)
+        controlByteCount, = struct.unpack_from('>L', data, start + 0x08)
 
-    # Skip the first 12 bytes already read above.
-    for i in range(12, firstEntryOffset, 4):
-        pos = start + i
-        tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
+        # Skip the first 12 bytes already read above.
+        for i in range(12, firstEntryOffset, 4):
+            pos = start + i
+            tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
     return controlByteCount, tags
