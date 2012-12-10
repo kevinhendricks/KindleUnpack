@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
 
 import sys
 import struct
@@ -115,7 +115,7 @@ def deletesectionrange(datain,firstsec,lastsec): # delete a range of sections
     return dataout
 
 def insertsection(datain,secno,secdata): # insert a new section
-	datalst = []
+    datalst = []
     nsec = getint(datain,number_of_pdb_records,'H')
     #print "inserting secno" , secno,  "into" ,nsec, "sections"
     secstart,secend = getsecaddr(datain,secno)
@@ -286,13 +286,13 @@ class mobi_split:
         lastimage = getint(datain_rec0,last_content_index,'H')
         #print "First Image, last Image", firstimage,lastimage
         if lastimage == 0xffff:
-        	# find the lowest of the next sections and copy up to that.
+            # find the lowest of the next sections and copy up to that.
             ofs_list = [(kf8_last_content_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
             for ofs,sz in ofs_list:
                 n = getint(datain_kfrec0,ofs,sz)
                 #print "n",n
                 if n > 0 and n < lastimage:
-                	lastimage = n-1
+                    lastimage = n-1
         #print "First Image, last Image", firstimage,lastimage
         
 
