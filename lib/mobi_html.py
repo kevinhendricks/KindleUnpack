@@ -71,8 +71,8 @@ class HTMLProcessor:
 
         # remove empty anchors
         print "Remove empty anchors from html"
-        srctext = re.sub(r"<a/>",r"", srctext)
-        srctext = re.sub(r"<a ?></a>",r"", srctext)
+        srctext = re.sub(r"<a\s*/>",r"", srctext)
+        srctext = re.sub(r"<a\s*>\s*</a>",r"", srctext)
         
         # convert image references
         print "Insert image references into html"
@@ -167,19 +167,18 @@ class XHTMLK8Processor:
             part = "".join(srcpieces)
             parts[i] = part
 
-        # we can safely remove all of the Kindlegen generated data-AmznPageBreak tags
+        # we can safely replace all of the Kindlegen generated data-AmznPageBreak tags
+        # with page-break-after style patterns
         find_tag_with_AmznPageBreak_pattern = re.compile(r'''(<[^>]*\sdata-AmznPageBreak=[^>]*>)''', re.IGNORECASE)
-        within_tag_AmznPageBreak_position_pattern = re.compile(r'''\sdata-AmznPageBreak=['"][^'"]*['"]''')
+        within_tag_AmznPageBreak_position_pattern = re.compile(r'''\sdata-AmznPageBreak=['"]([^'"]*)['"]''')
         for i in xrange(len(parts)):
             part = parts[i]
             srcpieces = find_tag_with_AmznPageBreak_pattern.split(part)
             for j in range(len(srcpieces)):
                 tag = srcpieces[j]
                 if tag.startswith('<'):
-                    for m in within_tag_AmznPageBreak_position_pattern.finditer(tag):
-                        replacement = ''
-                        tag = within_tag_AmznPageBreak_position_pattern.sub(replacement, tag, 1)
-                    srcpieces[j] = tag
+                    srcpieces[j] = within_tag_AmznPageBreak_position_pattern.sub(
+                        lambda m:' style="page-break-after:%s"'%m.group(1), tag)
             part = "".join(srcpieces)
             parts[i] = part
 
@@ -308,7 +307,6 @@ class XHTMLK8Processor:
         for i in xrange(len(parts)):
             part = parts[i]
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.partinfo[i]
-
             # flow pattern
             srcpieces = tag_pattern.split(part)
             for j in range(1, len(srcpieces),2):
@@ -316,14 +314,17 @@ class XHTMLK8Processor:
                 if tag.startswith('<'):
                     for m in flow_pattern.finditer(tag):
                         num = fromBase32(m.group(1))
-                        [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
-                        flowpart = flows[num]
-                        if fmt == 'inline':
-                            tag = flowpart
+                        if num > 0 and  num < len(self.k8proc.flowinfo):
+                            [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
+                            flowpart = flows[num]
+                            if fmt == 'inline':
+                                tag = flowpart
+                            else:
+                                replacement = '"../' + pdir + '/' + fnm + '"'
+                                tag = flow_pattern.sub(replacement, tag, 1)
+                                self.used[fnm] = 'used'
                         else:
-                            replacement = '"../' + pdir + '/' + fnm + '"'
-                            tag = flow_pattern.sub(replacement, tag, 1)
-                            self.used[fnm] = 'used'
+                            print "warning: ignoring non-existent flow link", tag, " value 0x%x" % num
                     srcpieces[j] = tag
             part = "".join(srcpieces)
 

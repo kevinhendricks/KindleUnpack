@@ -19,7 +19,7 @@ def getLanguage(langID, sublangID):
              2 : {0 : 'bg'}, # Bulgarian
              3 : {0 : 'ca'}, # Catalan
              4 : {0 : 'zh' , 3 : 'zh-hk' , 2 : 'zh-cn' , 4 : 'zh-sg' , 1 : 'zh-tw'}, # Chinese,  Chinese (Hong Kong),  Chinese (PRC),  Chinese (Singapore),  Chinese (Taiwan)
-            26 : {0 : 'hr'}, # Croatian
+            26 : {0 : 'hr', 3 : 'sr'}, # Croatian, Serbian
              5 : {0 : 'cs'}, # Czech
              6 : {0 : 'da'}, # Danish
             19 : {1 : 'nl' , 2 : 'nl-be'}, # Dutch / Flemish,  Dutch (Belgium)
@@ -64,7 +64,6 @@ def getLanguage(langID, sublangID):
                                                               # IANA code for "Northern Sami" is 'se'
                                                               # 'SZ' is the IANA region code for Swaziland
             79 : {0 : 'sa'}, # Sanskrit
-            26 : {3 : 'sr'}, # Serbian
             27 : {0 : 'sk'}, # Slovak
             36 : {0 : 'sl'}, # Slovenian
             46 : {0 : 'sb'}, # "Sorbian" (not an IANA language code)
@@ -94,24 +93,6 @@ def getLanguage(langID, sublangID):
     }
     return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
 
-def getVariableWidthValue(data, offset):
-    '''
-    Decode variable width value from given bytes.
-
-    @param data: The bytes to decode.
-    @param offset: The start offset into data.
-    @return: Tuple of consumed bytes count and decoded value.
-    '''
-    value = 0
-    consumed = 0
-    finished = False
-    while not finished:
-        v = data[offset + consumed]
-        consumed += 1
-        if ord(v) & 0x80:
-            finished = True
-        value = (value << 7) | (ord(v) & 0x7f)
-    return consumed, value
 
 def toHex(byteList):
     '''
@@ -122,6 +103,7 @@ def toHex(byteList):
     '''
     return " ".join([hex(ord(c))[2:].zfill(2) for c in byteList])
 
+
 def toBin(value, bits = 8):
     '''
     Convert integer value to binary string representation.
@@ -131,6 +113,7 @@ def toBin(value, bits = 8):
     @return: String with the binary representation.
     '''
     return "".join(map(lambda y:str((value>>y)&1), range(bits-1, -1, -1)))
+
 
 def toBase32(value, npad=4):
     digits = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
@@ -147,6 +130,7 @@ def toBase32(value, npad=4):
     if pad > 0:
         num_string = '0' * pad + num_string
     return num_string
+
 
 def fromBase32(str_num):
     scalelst = [1,32,1024,32768,1048576,33554432,1073741824,34359738368]
@@ -168,25 +152,6 @@ def fromBase32(str_num):
         if v != 0:
             value = value + (v * scale)
     return value
-
-def readTagSection(start, data):
-    '''
-    Read tag section from given data.
-
-    @param start: The start position in the data.
-    @param data: The data to process.
-    @return: Tuple of control byte count and list of tag tuples.
-    '''
-    tags = []
-    assert data[start:start+4] == "TAGX"
-    firstEntryOffset, = struct.unpack_from('>L', data, start + 0x04)
-    controlByteCount, = struct.unpack_from('>L', data, start + 0x08)
-
-    # Skip the first 12 bytes already read above.
-    for i in range(12, firstEntryOffset, 4):
-        pos = start + i
-        tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
-    return controlByteCount, tags
 
 
 def mangle_fonts(encryption_key, data):

@@ -4,6 +4,34 @@
 import sys, struct, re
 from mobi_index import MobiIndex
 from mobi_utils import fromBase32
+from path import pathof
+
+_guide_types = ['cover','title-page','toc','index','glossary','acknowledgements',
+                'bibliography','colophon','copyright-page','dedication',
+                'epigraph','foreward','loi','lot','notes','preface','text']
+
+# locate beginning and ending positions of tag with specific aid attribute 
+def locate_beg_end_of_tag(ml, aid):
+    pattern = r'''<[^>]*\said\s*=\s*['"]%s['"][^>]*>''' % aid
+    aid_pattern = re.compile(pattern,re.IGNORECASE)
+    for m in re.finditer(aid_pattern, ml):
+        plt = m.start()
+        pgt = ml.find('>',plt+1)
+        return plt, pgt
+    return 0, 0
+
+
+# iterate over all tags in block in reverse order, i.e. last ta to first tag
+def reverse_tag_iter(block):
+    end = len(block)
+    while True:
+        pgt = block.rfind(b'>', 0, end)
+        if pgt == -1: break
+        plt = block.rfind(b'<', 0, pgt)
+        if plt == -1: break
+        yield block[plt:pgt+1]
+        end = plt
+
 
 class K8Processor:
     def __init__(self, mh, sect, debug=False):
@@ -31,7 +59,7 @@ class K8Processor:
             if header[0:4] == "FDST":
                 num_sections, = struct.unpack_from('>L', header, 0x08)
                 self.fdsttbl = struct.unpack_from('>%dL' % (num_sections*2), header, 12)[::2] + (mh.rawSize, )
-                sect.setsectiondescription(self.fdst,"KF8 FDST split info")
+                sect.setsectiondescription(self.fdst,"KF8 FDST INDX")
                 if self.DEBUG:
                     print "\nFDST Section Map:  %d sections" % num_sections
                     for j in xrange(num_sections):
@@ -46,7 +74,7 @@ class K8Processor:
             # for i in xrange(2):
             #     fname = 'skel%04d.dat' % i
             #     data = self.sect.loadSection(self.skelidx + i)
-            #     file(fname, 'wb').write(data)
+            #     open(pathof(fname), 'wb').write(data)
             outtbl, ctoc_text = self.mi.getIndexData(self.skelidx, "KF8 Skeleton")
             fileptr = 0
             for [text, tagMap] in outtbl:
@@ -66,8 +94,8 @@ class K8Processor:
             # for i in xrange(3):
             #     fname = 'div%04d.dat' % i
             #     data = self.sect.loadSection(self.dividx + i)
-            #     file(fname, 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.dividx, "KF8 Division")
+            #     open(pathof(fname), 'wb').write(data)
+            outtbl, ctoc_text = self.mi.getIndexData(self.dividx, "KF8 Division/Fragment")
             for [text, tagMap] in outtbl:
                 # insert position, ctoc offset (aidtext), file number, sequence number, start position, length
                 ctocoffset = tagMap[2][0]
@@ -86,7 +114,7 @@ class K8Processor:
             # for i in xrange(3):
             #     fname = 'oth%04d.dat' % i
             #     data = self.sect.loadSection(self.othidx + i)
-            #     file(fname, 'wb').write(data)
+            #     open(pathof(fname), 'wb').write(data)
             outtbl, ctoc_text = self.mi.getIndexData(self.othidx, "KF8 Other (<guide> elements)")
             for [text, tagMap] in outtbl:
                 # ref_type, ref_title, div/frag number
@@ -134,11 +162,25 @@ class K8Processor:
             skeleton = text[skelpos: baseptr]
             for i in range(divcnt):
                 [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[divptr]
+                aidtext = idtext[12:-2]
                 if i == 0:
-                    aidtext = idtext[12:-2]
                     filename = 'part%04d.xhtml' % filenum
                 slice = text[baseptr: baseptr + length]
                 insertpos = insertpos - skelpos
+                head = skeleton[:insertpos]
+                tail = skeleton[insertpos:]
+                actual_inspos = insertpos
+                if (tail.find(b'>') < tail.find(b'<') or head.rfind(b'>') < head.rfind(b'<')):
+                    # There is an incomplete tag in either the head or tail.
+                    # This can happen for some badly formed KF8 files
+                    print 'The div table for %s has incorrect insert position. Calculating manually.' % skelname
+                    bp, ep = locate_beg_end_of_tag(skeleton, aidtext)
+                    if bp != ep:
+                        actual_inspos = ep + 1 + startpos
+                if insertpos != actual_inspos:
+                    print "fixed corrupt div/frag table insert position", insertpos+skelpos, actual_inspos+skelpos
+                    insertpos = actual_inspos
+                    self.divtbl[divptr][0] = actual_inspos + skelpos
                 skeleton = skeleton[0:insertpos] + slice + skeleton[insertpos:]
                 baseptr = baseptr + length
                 divptr += 1
@@ -147,7 +189,7 @@ class K8Processor:
             self.partinfo.append([skelnum, 'Text', filename, skelpos, baseptr, aidtext])
 
         # assembled_text = "".join(self.parts)
-        # file('assembled_text.dat','wb').write(assembled_text)
+        # open(pathof('assembled_text.dat'),'wb').write(assembled_text)
 
         # The primary css style sheet is typically stored next followed by any
         # snippets of code that were previously inlined in the
@@ -295,17 +337,24 @@ class K8Processor:
         [insertpos, idtext, filenum, seqnm, startpos, length] = self.divtbl[row]
         pos = insertpos + off
         fname, pn, skelpos, skelend = self.getFileInfo(pos)
-        # an existing "id=" must exist in original xhtml otherwise it would not have worked for linking.
+        if fname is None:
+            # pos does not exist
+            # default to skeleton pos instead
+            print "Link To Position", pos, "does not exist, retargeting to top of target"
+            pos = self.skeltbl[filenum][3]
+            fname, pn, skelpos, skelend = self.getFileInfo(pos)
+        # an existing "id=" or "name=" attribute must exist in original xhtml otherwise it would not have worked for linking.
         # Amazon seems to have added its own additional "aid=" inside tags whose contents seem to represent
         # some position information encoded into Base32 name.
-
         # so find the closest "id=" before position the file  by actually searching in that file
         idtext = self.getIDTag(pos)
         return fname, idtext
 
     def getIDTag(self, pos):
-        # find the correct tag by actually searching in the destination textblock at position
+        # find the first tag with a named anchor (name or id attribute) before pos
         fname, pn, skelpos, skelend = self.getFileInfo(pos)
+        if pn is None and skelpos is None:
+            print "Error: getIDTag - no file contains ", pos
         textblock = self.parts[pn]
         idtbl = []
         npos = pos - skelpos
@@ -314,35 +363,22 @@ class K8Processor:
         plt = textblock.find('<',npos)
         if plt == npos or pgt < plt:
             npos = pgt + 1
-        # find id links only inside of tags
-        #    inside any < > pair find all "id=' and return whatever is inside the quotes
+        # find id and name attributes only inside of tags
+        # use a reverse tag search since that is faster
+        #    inside any < > pair find "id=" and "name=" attributes return it
         #    [^>]* means match any amount of chars except for  '>' char
         #    [^'"] match any amount of chars except for the quote character
         #    \s* means match any amount of whitespace
         textblock = textblock[0:npos]
-        id_pattern = re.compile(r'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"][^>]*>''',re.IGNORECASE)
-        for m in re.finditer(id_pattern, textblock):
-            idtbl.append([m.start(), m.group(1)])
-        n = len(idtbl)
-        if n == 0:
-            if self.DEBUG:
-                print "Found no id in the textblock, link must be to top of file"
-            return ''
-        # if npos is before first id= inside a tag, return the first
-        if npos < idtbl[0][0] :
-            return idtbl[0][1]
-        # if npos is after the last id= inside a tag, return the last
-        if npos > idtbl[n-1][0] :
-            return idtbl[n-1][1]
-        # otherwise find last id before npos
-        tgt = 0
-        for r in xrange(n):
-            if npos < idtbl[r][0]:
-                tgt = r-1
-                break
+        id_pattern = re.compile(r'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        name_pattern = re.compile(r'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        for tag in reverse_tag_iter(textblock):
+            m = id_pattern.match(tag) or name_pattern.match(tag)
+            if m is not None:
+                return m.group(1)
         if self.DEBUG:
-            print pos, npos, idtbl[tgt]
-        return idtbl[tgt][1]
+            print "Found no id in the textblock, link must be to top of file"
+        return ''
 
 
     # do we need to do deep copying
@@ -358,7 +394,7 @@ class K8Processor:
             self.flows[i] = flows[i]
 
 
-    # get information about the part (file) that exists at pos in oriignal rawML
+    # get information about the part (file) that exists at pos in original rawML
     def getSkelInfo(self, pos):
         for [partnum, dir, filename, start, end, aidtext] in self.partinfo:
             if pos >= start and pos < end:
@@ -371,6 +407,11 @@ class K8Processor:
         for [ref_type, ref_title, fileno] in self.othtbl:
             if ref_type == 'thumbimagestandard':
                 continue
+            if ref_type not in _guide_types and not ref_type.startswith('other.'):
+                if ref_type == 'start':
+                    ref_type = 'text'
+                else:
+                    ref_type = 'other.' + ref_type
             [pos, idtext, filenum, seqnm, startpos, length] = self.divtbl[fileno]
             [pn, dir, filename, skelpos, skelend, aidtext] = self.getSkelInfo(pos)
             idtext = self.getIDTag(pos)

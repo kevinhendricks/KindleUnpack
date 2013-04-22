@@ -1,0 +1,57 @@
+<html>
+<head>
+<title>KindleUnpack ReadMe</title>
+</head>
+<body>
+	<p>KindleUnpack unpacks a non-DRM Kindle/MobiPocket ebook into its component parts which change depending on the type of Kindle/Mobi ebook being processed.</p>
+<p>
+	<ol>
+	<li><p>MobiPocket and early Kindle version 7 or less ebooks are unpacked to the original html 3.2 and images folder that can then be edited and reprocessed by MobiPocketCreator.</p></li>
+	<li><p>Kindle Print Replica ebook as unpacked to the original PDF and any associated images.</p></li>
+	<li><p>Kindle KF8 only ebooks (.azw3) are unpacked into an epub-like structure that may or may not be a fully valid epub depending on if a fully valid epub was originally provided to kindlegen as input.</><p>NOTE: The generated epub should be validated using an epub validator and should changes be needed, it should load properly into Sigil and Calibre either of which can be used to edit the result to create a fully valid epub.</p></li>
+	<li><p>Newer Kindle ebooks which have both KF8 and older versions inside are unpacked into two different parts: the first being the older MobiPocket format ebook parts (see #1 above) and the second being an epub-like structure that can be edited using Sigil (see #3 above).</p></li>
+	</ol>
+</p>
+<p> The KindleUnpack program requires Python 2.6 or 2.7 to function properly.</p>
+<p>On Windows machines we strongly recommend you install the free version of ActiveState's Active Python 2.7.3 or later 2.7.X version as it properly installs all of the required parts including the tk widget kit and updates the system path on Windows machines.  The official installer from python.org does not properly handle this for Windows machines.</p>
+<p>On Mac OS X 10.6.X and later and almost all recent Linux versions the required version of Python is already installed as part of the official OS installation so Mac OS X and Linux users need install nothing extra.</p>
+
+<p>To install KindleUnpack, simply find a nice location on your machine and fully unzip it.  Do not move the KindleUnpack.pyw program away from its associated "lib" folder.  If you have a proper Python 2.6 or later installation on your machine, you should be able to simply double-click the KindleUnpack.pyw icon and the gui interface should start.</p>
+
+<p>If you would prefer a command-line interface, simply look inside KindleUnpack's "lib" folder for the KindleUnpack.py python program and its support modules.  You should then be able to run KindleUnpack.py by the following command:</p>
+
+<pre>
+python kindle_unpack.py [-r -s -d -h] INPUT_FILE OUTPUT_FOLDER
+</pre>
+
+<p>where you replace:</p>
+<pre>
+
+   INPUT_FILE      - the path to the desired Kindle/MobiPocket ebook
+
+   OUTPUT_FOLDER   - the path to folder where the ebook will be unpacked
+
+Options:
+    -r           write raw data to the output folder
+    -s           split combination mobis into older mobi and mobi KF8 ebooks
+    -d           dump headers and other debug info to output and extra files
+    -h           print this help message
+</pre>
+
+<p>Please report any bugs or comments/requests our sticky forum on the Mobileread website.  It can be found at http://www.mobileread.com/forums.  Look under E-Book Formats > Mobi > New Kindle/Mobi Decoder: mobiunpack.py.
+</p>
+
+<p>License Information</p>
+<pre>
+KindleUnpack
+   Based on initial version Copyright &copy; 2009 Charles M. Hannum root@ihack.net
+   Extensions / Improvements Copyright &copy; 2009-2012: P. Durrant, K.Hendricks,
+   S. Siebert, fandrieu, DiapDealer, nickredding, and bug fixes from many others.
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, version 3.
+</pre>
+
+</body>
+</html>

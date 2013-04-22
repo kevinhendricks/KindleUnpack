@@ -6,7 +6,8 @@ DEBUG_DICT = False
 import sys
 import array, struct, os, re, imghdr
 
-from mobi_utils import toHex, toBin, getVariableWidthValue, getLanguage, readTagSection
+from mobi_index import getVariableWidthValue, readTagSection, countSetBits, getTagMap
+from mobi_utils import toHex, toBin, getLanguage
 
 class dictSupport:
     def __init__(self, mh, sect):
@@ -74,7 +75,7 @@ class dictSupport:
                     endPos = idxPositions[j+1]
                     textLength = ord(data[startPos])
                     text = data[startPos+1:startPos+1+textLength]
-                    tagMap = self.getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
+                    tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     if 0x01 in tagMap:
                         if decodeInflection and 0x2a in tagMap:
                             inflectionGroups = self.getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable, inflIndexData, inflNameData, tagMap[0x2a])
@@ -141,7 +142,7 @@ class dictSupport:
 
             # First byte seems to be always 0x00 and must be skipped.
             assert ord(data[offset]) == 0x00
-            tagMap = self.getTagMap(controlByteCount, tagTable, data, offset + 1, nextOffset)
+            tagMap = getTagMap(controlByteCount, tagTable, data, offset + 1, nextOffset)
 
             # Make sure that the required tags are available.
             if 0x05 not in tagMap:
@@ -170,83 +171,6 @@ class dictSupport:
             result += "</idx:infl>"
         return result
 
-    def getTagMap(self, controlByteCount, tagTable, entryData, startPos, endPos):
-        '''
-        Create a map of tags and values from the given byte section.
-
-        @param controlByteCount: The number of control bytes.
-        @param tagTable: The tag table.
-        @param entryData: The data to process.
-        @param startPos: The starting position in entryData.
-        @param endPos: The end position in entryData or None if it is unknown.
-        @return: Hashmap of tag and list of values.
-        '''
-        tags = []
-        tagHashMap = {}
-        controlByteIndex = 0
-        dataStart = startPos + controlByteCount
-
-        for tag, valuesPerEntry, mask, endFlag in tagTable:
-            if endFlag == 0x01:
-                controlByteIndex += 1
-                continue
-
-            value = ord(entryData[startPos + controlByteIndex]) & mask
-
-            if value != 0:
-                if value == mask:
-                    if self.countSetBits(mask) > 1:
-                        # If all bits of masked value are set and the mask has more than one bit, a variable width value
-                        # will follow after the control bytes which defines the length of bytes (NOT the value count!)
-                        # which will contain the corresponding variable width values.
-                        consumed, value = getVariableWidthValue(entryData, dataStart)
-                        dataStart += consumed
-                        tags.append((tag, None, value, valuesPerEntry))
-                    else:
-                        tags.append((tag, 1, None, valuesPerEntry))
-                else:
-                    # Shift bits to get the masked value.
-                    while mask & 0x01 == 0:
-                        mask = mask >> 1
-                        value = value >> 1
-                    tags.append((tag, value, None, valuesPerEntry))
-
-        for tag, valueCount, valueBytes, valuesPerEntry in tags:
-            values = []
-            if valueCount != None:
-                # Read valueCount * valuesPerEntry variable width values.
-                for _ in range(valueCount):
-                    for _ in range(valuesPerEntry):
-                        consumed, data = getVariableWidthValue(entryData, dataStart)
-                        dataStart += consumed
-                        values.append(data)
-            else:
-                # Convert valueBytes to variable width values.
-                totalConsumed = 0
-                while totalConsumed < valueBytes:
-                    # Does this work for valuesPerEntry != 1?
-                    consumed, data = getVariableWidthValue(entryData, dataStart)
-                    dataStart += consumed
-                    totalConsumed += consumed
-                    values.append(data)
-                if totalConsumed != valueBytes:
-                    print "Error: Should consume %s bytes, but consumed %s" % (valueBytes, totalConsumed)
-            tagHashMap[tag] = values
-
-        # Test that all bytes have been processed if endPos is given.
-        if endPos is not None and dataStart != endPos:
-            # The last entry might have some zero padding bytes, so complain only if non zero bytes are left.
-            for char in entryData[dataStart:endPos]:
-                if char != chr(0x00):
-                    print "Warning: There are unprocessed index bytes left: %s" % toHex(entryData[dataStart:endPos])
-                    if DEBUG_DICT:
-                        print "controlByteCount: %s" % controlByteCount
-                        print "tagTable: %s" % tagTable
-                        print "data: %s" % toHex(entryData[startPos:endPos])
-                        print "tagHashMap: %s" % tagHashMap
-                    break
-
-        return tagHashMap
 
     def applyInflectionRule(self, mainEntry, inflectionRuleData, start, end):
         '''
@@ -331,17 +255,3 @@ class dictSupport:
                 return None
         return byteArray.tostring()
 
-    def countSetBits(self, value, bits = 8):
-        '''
-        Count the set bits in the given value.
-
-        @param value: Integer value.
-        @param bits: The number of bits of the input value (defaults to 8).
-        @return: Number of set bits.
-        '''
-        count = 0
-        for _ in range(bits):
-            if value & 0x01 == 0x01:
-                count += 1
-            value = value >> 1
-        return count

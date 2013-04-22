@@ -3,10 +3,11 @@
 
 DEBUG_NCX = False
 
-import sys, os, struct, re, codecs
+import sys, os, struct, re
 
-from mobi_utils import readTagSection, getVariableWidthValue, toBase32
+from mobi_utils import toBase32
 from mobi_index import MobiIndex
+from path import pathof
 
 class ncxExtract:
     def __init__(self, mh, files):
@@ -63,9 +64,15 @@ class ncxExtract:
                             fieldvalue = 'kindle:pos:fid:%s:off:%s' % (pos_fid, pos_off)
                         tmp[fieldname] = fieldvalue
                         if tag == 3:
-                            tmp['text'] = ctoc_text.get(fieldvalue, 'Unknown Text')
+                            toctext = ctoc_text.get(fieldvalue, 'Unknown Text')
+                            if self.mh.codec != 'utf-8':
+                                toctext = unicode(toctext, self.mh.codec).encode('utf-8')
+                            tmp['text'] = toctext
                         if tag == 5:
-                            tmp['kind'] = ctoc_text.get(fieldvalue, 'Unknown Kind')
+                            kindtext = ctoc_text.get(fieldvalue, 'Unknown Kind')
+                            if self.mh.codec != 'utf-8':
+                                kindtext = unicode(kindtext, self.mh.codec).encode('utf-8')
+                            tmp['kind'] = kindtext
                 indx_data.append(tmp)
                 if DEBUG_NCX:
                     print "record number: ", num
@@ -79,7 +86,6 @@ class ncxExtract:
                     print "pos_fid is ", tmp['pos_fid']
                     print "\n\n"
                 num += 1
-            num += 1
         self.indx_data = indx_data
         return indx_data
 
@@ -167,7 +173,7 @@ class ncxExtract:
         xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0])
         #write the ncx file
         ncxname = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.ncx')
-        file(ncxname, 'wb').write(xml)
+        open(pathof(ncxname), 'wb').write(xml)
 
 
     def buildK8NCX(self, indx_data, title, ident):
@@ -254,4 +260,4 @@ class ncxExtract:
         xml = self.buildK8NCX(ncx_data, metadata['Title'][0], metadata['UniqueID'][0])
         bname = 'toc.ncx'
         ncxname = os.path.join(self.files.k8oebps,bname)
-        file(ncxname, 'wb').write(xml)
+        open(pathof(ncxname), 'wb').write(xml)
