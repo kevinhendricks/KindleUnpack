@@ -1,34 +1,71 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
 import sys
 sys.path.append('lib')
 import os, os.path, urllib
-os.environ['PYTHONIOENCODING'] = "utf-8"
-import subprocess
-from subprocess import Popen, PIPE, STDOUT
-import subasyncio
-from subasyncio import Process
+import codecs
+
+from utf8_utils import add_cp65001_codec, utf8_argv, utf8_str
+add_cp65001_codec()
+
+import path
+
+if sys.platform.startswith("win"):
+    from askfolder_ed import AskFolder
+
+from Queue import Full
+from Queue import Empty
+from multiprocessing import Process, Queue
+
+import kindleunpack
+
+# Wrap a stream so that output gets appended to shared queue
+# using utf-8 encoding
+class QueuedStream:
+    def __init__(self, stream, q):
+        self.stream = stream
+        self.encoding = stream.encoding
+        self.q = q
+        if self.encoding == None:
+            self.encoding = 'utf-8'
+    def write(self, data):
+        if isinstance(data,unicode):
+            data = data.encode('utf-8')
+        elif self.encoding not in ['utf-8','UTF-8','cp65001','CP65001']:
+            udata = data.decode(self.encoding)
+            data = udata.encode('utf-8')
+        self.q.put(data)
+    def __getattr__(self, attr):
+        if attr == 'mode':
+            return 'wb'
+        if attr == 'encoding':
+            return 'utf-8'
+        return getattr(self.stream, attr)
+
 import Tkinter
 import Tkconstants
 import tkFileDialog
 import tkMessageBox
+
 from scrolltextwidget import ScrolledText
 
 class MainDialog(Tkinter.Frame):
     def __init__(self, root):
         Tkinter.Frame.__init__(self, root, border=5)
         self.root = root
-        self.interval = 500
+        self.interval = 50
         self.p2 = None
-        self.status = Tkinter.Label(self, text='Upack a non-DRM Mobi eBook')
+        self.q = Queue()
+        self.status = Tkinter.Label(self, text='Upack a non-DRM Kindle eBook')
         self.status.pack(fill=Tkconstants.X, expand=1)
         body = Tkinter.Frame(self)
         body.pack(fill=Tkconstants.X, expand=1)
         sticky = Tkconstants.E + Tkconstants.W
         body.grid_columnconfigure(1, weight=2)
 
-        Tkinter.Label(body, text='Unencrypted Mobi eBook input file').grid(row=0, sticky=Tkconstants.E)
+        Tkinter.Label(body, text='Unencrypted Kindle eBook input file').grid(row=0, sticky=Tkconstants.E)
         self.mobipath = Tkinter.Entry(body, width=50)
         self.mobipath.grid(row=0, column=1, sticky=sticky)
         self.mobipath.insert(0, '')
@@ -44,7 +81,7 @@ class MainDialog(Tkinter.Frame):
 
         Tkinter.Label(body, text='').grid(row=2, sticky=Tkconstants.E)
         self.splitvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Split Combination Mobi Files", variable=self.splitvar)
+        checkbox = Tkinter.Checkbutton(body, text="Split Combination KF8 Kindle eBooks", variable=self.splitvar)
         checkbox.grid(row=2, column=1, sticky=Tkconstants.W)
 
         Tkinter.Label(body, text='').grid(row=3, sticky=Tkconstants.E)
@@ -58,7 +95,7 @@ class MainDialog(Tkinter.Frame):
         checkbox.grid(row=4, column=1, sticky=Tkconstants.W)
 
         msg1 = 'Conversion Log \n\n'
-        self.stext = ScrolledText(body, bd=5, relief=Tkconstants.RIDGE, height=15, width=60, wrap=Tkconstants.WORD)
+        self.stext = ScrolledText(body, bd=5, relief=Tkconstants.RIDGE, height=20, width=60, wrap=Tkconstants.WORD)
         self.stext.grid(row=5, column=0, columnspan=2,sticky=sticky)
         self.stext.insert(Tkconstants.END,msg1)
 
@@ -73,26 +110,39 @@ class MainDialog(Tkinter.Frame):
             buttons, text="Quit", width=10, command=self.quitting)
         self.qbutton.pack(side=Tkconstants.RIGHT)
 
+    # read queue shared between this main process and spawned child processes
+    def readQueueUntilEmpty(self):
+        done = False
+        text = ''
+        while not done:
+            try:
+                data = self.q.get_nowait()
+                text += data
+            except Empty:
+                done = True
+                pass
+        return text
+
+
     # read from subprocess pipe without blocking
     # invoked every interval via the widget "after"
     # option being used, so need to reset it for the next time
-    def processPipe(self):
-        poll = self.p2.wait('nowait')
+    def processQueue(self):
+        poll = self.p2.exitcode
         if poll != None: 
-            text = self.p2.readerr()
-            text += self.p2.read()
+            text = self.readQueueUntilEmpty()
             msg = text + '\n\n' + 'eBook successfully unpacked\n'
             if poll != 0:
                 msg = text + '\n\n' + 'Error: Unpacking Failed\n'
+            self.p2.join()
             self.showCmdOutput(msg)
             self.p2 = None
             self.sbotton.configure(state='normal')
             return
-        text = self.p2.readerr()
-        text += self.p2.read()
+        text = self.readQueueUntilEmpty()
         self.showCmdOutput(text)
         # make sure we get invoked again by event loop after interval 
-        self.stext.after(self.interval,self.processPipe)
+        self.stext.after(self.interval,self.processQueue)
         return
 
     # post output from subprocess in scrolled text widget
@@ -104,51 +154,39 @@ class MainDialog(Tkinter.Frame):
             self.stext.yview_pickplace(Tkconstants.END)
         return
 
-    # run as a subprocess via pipes and collect stdout
-    def mobirdr(self, options, infile, outdir):
-        pengine = sys.executable
-        if pengine is None or pengine == '':
-            pengine = "python"
-        pengine = os.path.normpath(pengine)
-        # os.putenv('PYTHONUNBUFFERED', '1')
-        cmdline = pengine + ' ./lib/mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
-        if sys.platform[0:3] == 'win':
-            # search_path = os.environ['PATH']
-            # search_path = search_path.lower()
-            # if search_path.find('python') >= 0: 
-            #     cmdline = 'python lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
-            # else :
-            #     cmdline = 'lib\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
-            cmdline = pengine + ' lib\\mobi_unpack.py ' + options + ' "' + infile + '" "' + outdir + '"'
-
-        cmdline = cmdline.encode(sys.getfilesystemencoding())
-        p2 = Process(cmdline, shell=True, bufsize=1, stdin=None, stdout=PIPE, stderr=PIPE, close_fds=False)
-        return p2
-
 
     def get_mobipath(self):
         cwd = os.getcwdu()
         cwd = cwd.encode('utf-8')
         mobipath = tkFileDialog.askopenfilename(
-            parent=None, title='Select Unencrypted Mobi eBook File',
+            parent=None, title='Select Unencrypted Kindle eBook File',
             initialdir=cwd,
             initialfile=None,
-            defaultextension='.prc', filetypes=[('Mobi PRC eBook File', '.prc'), ('Mobi AZW eBook File', '.azw'), ('Mobi eBook File', '.mobi'), ('Mobi AZW4 Print Replica', '.azw4'),('Mobi Version 8', '.azw3'),('All Files', '.*')])
+            defaultextension='.mobi', filetypes=[('Kindle Mobi eBook File', '.mobi'), ('Kindle PRC eBook File', '.prc'), ('Kindle AZW eBook File', '.azw'), ('Kindle AZW4 Print Replica', '.azw4'),('Kindle Version 8', '.azw3'),('All Files', '.*')])
         if mobipath:
             mobipath = os.path.normpath(mobipath)
+            mobipath = utf8_str(mobipath)
             self.mobipath.delete(0, Tkconstants.END)
             self.mobipath.insert(0, mobipath)
         return
 
 
     def get_outpath(self):
-        cwd = os.getcwdu()
-        cwd = cwd.encode('utf-8')
-        outpath = tkFileDialog.askdirectory(
-            parent=None, title='Directory to Store Output into',
-            initialdir=cwd, initialfile=None)
+        ucwd = os.getcwdu()
+        cwd = ucwd.encode('utf-8')
+        if sys.platform.startswith("win"):
+            # tk_chooseDirectory is horribly broken for unicode paths
+            # on windows - bug has been reported but not fixed for years
+            # workaround by using our own unicode aware version
+            outpath = AskFolder(message="Folder to Store Output into", 
+                defaultLocation=os.getcwdu())
+        else:
+            outpath = tkFileDialog.askdirectory(
+                parent=None, title='Folder to Store Output into',
+                initialdir=cwd, initialfile=None)
         if outpath:
             outpath = os.path.normpath(outpath)
+            outpath = utf8_str(outpath)
             self.outpath.delete(0, Tkconstants.END)
             self.outpath.insert(0, outpath)
         return
@@ -157,54 +195,70 @@ class MainDialog(Tkinter.Frame):
     def quitting(self):
         # kill any still running subprocess
         if self.p2 != None:
-            if (self.p2.wait('nowait') == None):
+            if (self.p2.exitcode == None):
                 self.p2.terminate()
         self.root.destroy()
 
-    # actually ready to run the subprocess and get its output
+
+    # run in a child process and collect its output
     def convertit(self):
         # now disable the button to prevent multiple launches
         self.sbotton.configure(state='disabled')
-        mobipath = self.mobipath.get()
-        outdir = self.outpath.get()
-        options = ""
-        if self.dbgvar.get() == 1:
-            options += 'd'
-        if self.rawvar.get() == 1:
-            options += 'r'
-        if self.splitvar.get() == 1:
-            options += 's'
-        if options != "":
-            options = '-' + options
-        if not mobipath or not os.path.exists(mobipath):
-            self.status['text'] = 'Specified Mobi eBook file does not exist'
+        mobipath = utf8_str(self.mobipath.get())
+        outdir = utf8_str(self.outpath.get())
+        if not mobipath or not path.exists(mobipath):
+            self.status['text'] = 'Specified eBook file does not exist'
             self.sbotton.configure(state='normal')
             return
         if not outdir:
             self.status['text'] = 'No output directory specified'
             self.sbotton.configure(state='normal')
             return
-
-        log = 'Command = "python mobiunpack.py"\n'
-        log += 'Mobi Path = "'+ mobipath + '"\n'
+        q = self.q
+        log = 'Input Path = "'+ mobipath + '"\n'
         log += 'Output Path = "' + outdir + '"\n'
-        log += 'Options = "' + options + '"\n'
+        dump = False
+        writeraw = False
+        splitcombos = False
+        if self.dbgvar.get() == 1:
+            dump = True
+            log += 'Debug = True\n'
+        if self.rawvar.get() == 1:
+            writeraw = True
+            log += 'WriteRawML = True\n'
+        if self.splitvar.get() == 1:
+            splitcombos = True
+            log += 'Split Combo KF8 Kindle eBooks = True\n'
         log += '\n\n'
         log += 'Please Wait ...\n\n'
         self.stext.insert(Tkconstants.END,log)
-        self.p2 = self.mobirdr(options, mobipath, outdir)
+        self.p2 = Process(target=unpackEbook, args=(q, mobipath, outdir, dump, writeraw, splitcombos))
+        self.p2.start()
 
         # python does not seem to allow you to create
         # your own eventloop which every other gui does - strange 
         # so need to use the widget "after" command to force
         # event loop to run non-gui events every interval
-        self.stext.after(self.interval,self.processPipe)
+        self.stext.after(self.interval,self.processQueue)
         return
 
 
-def main(argv=None):
+# child process / multiprocessing thread starts here
+def unpackEbook(q, infile, outdir, dump, writeraw, splitcombos):
+    sys.stdout = QueuedStream(sys.stdout, q)
+    sys.stderr = QueuedStream(sys.stderr, q)
+    rv = 0
+    try:
+        kindleunpack.unpackBook(infile, outdir, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
+    except Exception, e:
+        print "Error: %s" % e
+        rv = 1
+    sys.exit(rv)
+
+
+def main(argv=utf8_argv()):
     root = Tkinter.Tk()
-    root.title('Mobi ebook Unpack Tool')
+    root.title('Kindle eBook Unpack Tool')
     root.resizable(True, False)
     root.minsize(300, 0)
     MainDialog(root).pack(fill=Tkconstants.X, expand=1)
@@ -213,3 +267,4 @@ def main(argv=None):
     
 if __name__ == "__main__":
     sys.exit(main())
+

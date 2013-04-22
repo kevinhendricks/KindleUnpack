@@ -4,6 +4,7 @@
 import sys
 import struct
 import binascii
+from path import pathof
 
 # important  pdb header offsets
 unique_id_seed = 68
@@ -221,7 +222,7 @@ def del_exth(rec0,exth_num):
 class mobi_split:
 
     def __init__(self, infile):
-        datain = file(infile, 'rb').read()
+        datain = open(pathof(infile), 'rb').read()
         datain_rec0 = readsection(datain,0)
         ver = getint(datain_rec0,mobi_version)
         self.combo = (ver!=8)
@@ -253,6 +254,8 @@ class mobi_split:
             datain_rec0 = writeint(datain_rec0,srcs_count,0)
         # reset the EXTH 121 KF8 Boundary meta data to 0xffffffff
         datain_rec0 = write_exth(datain_rec0,121, struct.pack('>L', 0xffffffff))
+        # datain_rec0 = del_exth(datain_rec0,121)
+        # datain_rec0 = del_exth(datain_rec0,534)
         # don't remove the EXTH 125 KF8 Count of Resources, seems to be present in mobi6 files as well
         # set the EXTH 129 KF8 Masthead / Cover Image string to the null string
         datain_rec0 = write_exth(datain_rec0,129, '')
@@ -263,11 +266,12 @@ class mobi_split:
         # Bit Flags
         # 0x1000 = Bit 12 indicates if embedded fonts are used or not
         # 0x0800 = means this Header points to *shared* images/resource/fonts ??
+        # 0x0080 = unknown new flag, why is this now being set by Kindlegen 2.8?
         # 0x0040 = exth exists
         # 0x0010 = Not sure but this is always set so far
         fval, = struct.unpack_from('>L',datain_rec0, 0x80)
-        fval = fval & 0x1FFF
-        fval |=  0x0800
+        # need to remove flag 0x0800 for KindlePreviewer 2.8 and unset Bit 12 for embedded fonts
+        fval = fval & 0x07FF
         datain_rec0 = datain_rec0[:0x80] + struct.pack('>L',fval) + datain_rec0[0x84:]
 
         self.result_file7 = writesection(self.result_file7,0,datain_rec0)
@@ -296,11 +300,11 @@ class mobi_split:
         #print "First Image, last Image", firstimage,lastimage
         
 
-        # No need to null out FONT and RES, but leave the (empty) PDB record so image refs remain valid
-        # for i in range(firstimage,lastimage):
-        #     imgsec = readsection(self.result_file7,i)
-        #     if imgsec[0:4] in ['RESC','FONT']:
-        #         self.result_file7 = nullsection(self.result_file7,i)
+        # Try to null out FONT and RES, but leave the (empty) PDB record so image refs remain valid
+        for i in range(firstimage,lastimage):
+            imgsec = readsection(self.result_file7,i)
+            if imgsec[0:4] in ['RESC','FONT']:
+                self.result_file7 = nullsection(self.result_file7,i)
 
         # mobi7 finished
 
@@ -327,6 +331,7 @@ class mobi_split:
         # Bit Flags
         # 0x1000 = Bit 12 indicates if embedded fonts are used or not
         # 0x0800 = means this Header points to *shared* images/resource/fonts ??
+        # 0x0080 = unknown new flag, why is this now being set by Kindlegen 2.8?
         # 0x0040 = exth exists
         # 0x0010 = Not sure but this is always set so far
         fval, = struct.unpack_from('>L',datain_kfrec0, 0x80)

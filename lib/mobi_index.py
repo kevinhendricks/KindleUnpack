@@ -16,7 +16,7 @@ class MobiIndex:
         outtbl = []
         ctoc_text = {}
         if idx != 0xffffffff:
-            sect.setsectiondescription(idx,"Main {0} INDX section".format(label))
+            sect.setsectiondescription(idx,"{0} Main INDX section".format(label))
             data = sect.loadSection(idx)
             idxhdr, hordt1, hordt2 = self.parseINDXHeader(data)
             IndexCount = idxhdr['count']
@@ -25,6 +25,7 @@ class MobiIndex:
             off = idx + IndexCount + 1
             for j in range(idxhdr['nctoc']):
                 cdata = sect.loadSection(off + j)
+                sect.setsectiondescription(off+j, label + ' CTOC Data ' + str(j))
                 ctocdict = self.readCTOC(cdata)
                 for k in ctocdict.keys():
                     ctoc_text[k + rec_off] = ctocdict[k]
@@ -36,7 +37,7 @@ class MobiIndex:
                 print "IndexCount is", IndexCount
                 print "TagTable: %s" % tagTable
             for i in range(idx + 1, idx + 1 + IndexCount):
-                sect.setsectiondescription(i,"Extra {1:d} {0} INDX section".format(label,i-idx))
+                sect.setsectiondescription(i,"{0} Extra {1:d} INDX section".format(label,i-idx))
                 data = sect.loadSection(i)
                 hdrinfo, ordt1, ordt2 = self.parseINDXHeader(data)
                 idxtPos = hdrinfo['start']
@@ -58,107 +59,12 @@ class MobiIndex:
                     text = data[startPos+1:startPos+1+textLength]
                     if hordt2 is not None:
                         text = ''.join(chr(hordt2[ord(x)]) for x in text)
-                    tagMap = self.getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
+                    tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     outtbl.append([text, tagMap])
                     if self.DEBUG:
                         print tagMap
                         print text
         return outtbl, ctoc_text
-
-
-    def getTagMap(self, controlByteCount, tagTable, entryData, startPos, endPos):
-        '''
-        Create a map of tags and values from the given byte section.
-
-        @param controlByteCount: The number of control bytes.
-        @param tagTable: The tag table.
-        @param entryData: The data to process.
-        @param startPos: The starting position in entryData.
-        @param endPos: The end position in entryData or None if it is unknown.
-        @return: Hashmap of tag and list of values.
-        '''
-        tags = []
-        tagHashMap = {}
-        controlByteIndex = 0
-        dataStart = startPos + controlByteCount
-
-        for tag, valuesPerEntry, mask, endFlag in tagTable:
-            if endFlag == 0x01:
-                controlByteIndex += 1
-                continue
-            cbyte = ord(entryData[startPos + controlByteIndex])
-            if self.DEBUG:
-                print "Control Byte Index %0x , Control Byte Value %0x" % (controlByteIndex, cbyte)
-
-            value = ord(entryData[startPos + controlByteIndex]) & mask
-            if value != 0:
-                if value == mask:
-                    if self.countSetBits(mask) > 1:
-                        # If all bits of masked value are set and the mask has more than one bit, a variable width value
-                        # will follow after the control bytes which defines the length of bytes (NOT the value count!)
-                        # which will contain the corresponding variable width values.
-                        consumed, value = getVariableWidthValue(entryData, dataStart)
-                        dataStart += consumed
-                        tags.append((tag, None, value, valuesPerEntry))
-                    else:
-                        tags.append((tag, 1, None, valuesPerEntry))
-                else:
-                    # Shift bits to get the masked value.
-                    while mask & 0x01 == 0:
-                        mask = mask >> 1
-                        value = value >> 1
-                    tags.append((tag, value, None, valuesPerEntry))
-        for tag, valueCount, valueBytes, valuesPerEntry in tags:
-            values = []
-            if valueCount != None:
-                # Read valueCount * valuesPerEntry variable width values.
-                for _ in range(valueCount):
-                    for _ in range(valuesPerEntry):
-                        consumed, data = getVariableWidthValue(entryData, dataStart)
-                        dataStart += consumed
-                        values.append(data)
-            else:
-                # Convert valueBytes to variable width values.
-                totalConsumed = 0
-                while totalConsumed < valueBytes:
-                    # Does this work for valuesPerEntry != 1?
-                    consumed, data = getVariableWidthValue(entryData, dataStart)
-                    dataStart += consumed
-                    totalConsumed += consumed
-                    values.append(data)
-                if totalConsumed != valueBytes:
-                    print "Error: Should consume %s bytes, but consumed %s" % (valueBytes, totalConsumed)
-            tagHashMap[tag] = values
-        # Test that all bytes have been processed if endPos is given.
-        if endPos is not None and dataStart != endPos:
-            # The last entry might have some zero padding bytes, so complain only if non zero bytes are left.
-            for char in entryData[dataStart:endPos]:
-                if char != chr(0x00):
-                    print "Warning: There are unprocessed index bytes left: %s" % toHex(entryData[dataStart:endPos])
-                    if self.DEBUG:
-                        print "controlByteCount: %s" % controlByteCount
-                        print "tagTable: %s" % tagTable
-                        print "data: %s" % toHex(entryData[startPos:endPos])
-                        print "tagHashMap: %s" % tagHashMap
-                    break
-
-        return tagHashMap
-
-
-    def countSetBits(self, value, bits = 8):
-        '''
-        Count the set bits in the given value.
-
-        @param value: Integer value.
-        @param bits: The number of bits of the input value (defaults to 8).
-        @return: Number of set bits.
-        '''
-        count = 0
-        for _ in range(bits):
-            if value & 0x01 == 0x01:
-                count += 1
-            value = value >> 1
-        return count
 
 
     def parseINDXHeader(self, data):
@@ -214,7 +120,7 @@ class MobiIndex:
             pos, ilen = getVariableWidthValue(txtdata, offset)
             offset += pos
             #<len> next bytes: name
-            name = unicode(txtdata[offset:offset+ilen], 'windows-1252').encode('utf-8')
+            name = txtdata[offset:offset+ilen]
             offset += ilen
             if self.DEBUG:
                 print "name length is ", ilen
@@ -262,3 +168,100 @@ def readTagSection(start, data):
             pos = start + i
             tags.append((ord(data[pos]), ord(data[pos+1]), ord(data[pos+2]), ord(data[pos+3])))
     return controlByteCount, tags
+
+
+def countSetBits(value, bits = 8):
+    '''
+    Count the set bits in the given value.
+
+    @param value: Integer value.
+    @param bits: The number of bits of the input value (defaults to 8).
+    @return: Number of set bits.
+    '''
+    count = 0
+    for _ in range(bits):
+        if value & 0x01 == 0x01:
+            count += 1
+        value = value >> 1
+    return count
+
+
+def getTagMap(controlByteCount, tagTable, entryData, startPos, endPos):
+    '''
+    Create a map of tags and values from the given byte section.
+
+    @param controlByteCount: The number of control bytes.
+    @param tagTable: The tag table.
+    @param entryData: The data to process.
+    @param startPos: The starting position in entryData.
+    @param endPos: The end position in entryData or None if it is unknown.
+    @return: Hashmap of tag and list of values.
+    '''
+    tags = []
+    tagHashMap = {}
+    controlByteIndex = 0
+    dataStart = startPos + controlByteCount
+
+    for tag, valuesPerEntry, mask, endFlag in tagTable:
+        if endFlag == 0x01:
+            controlByteIndex += 1
+            continue
+        cbyte = ord(entryData[startPos + controlByteIndex])
+        if 0:
+            print "Control Byte Index %0x , Control Byte Value %0x" % (controlByteIndex, cbyte)
+
+        value = ord(entryData[startPos + controlByteIndex]) & mask
+        if value != 0:
+            if value == mask:
+                if countSetBits(mask) > 1:
+                    # If all bits of masked value are set and the mask has more than one bit, a variable width value
+                    # will follow after the control bytes which defines the length of bytes (NOT the value count!)
+                    # which will contain the corresponding variable width values.
+                    consumed, value = getVariableWidthValue(entryData, dataStart)
+                    dataStart += consumed
+                    tags.append((tag, None, value, valuesPerEntry))
+                else:
+                    tags.append((tag, 1, None, valuesPerEntry))
+            else:
+                # Shift bits to get the masked value.
+                while mask & 0x01 == 0:
+                    mask = mask >> 1
+                    value = value >> 1
+                tags.append((tag, value, None, valuesPerEntry))
+    for tag, valueCount, valueBytes, valuesPerEntry in tags:
+        values = []
+        if valueCount != None:
+            # Read valueCount * valuesPerEntry variable width values.
+            for _ in range(valueCount):
+                for _ in range(valuesPerEntry):
+                    consumed, data = getVariableWidthValue(entryData, dataStart)
+                    dataStart += consumed
+                    values.append(data)
+        else:
+            # Convert valueBytes to variable width values.
+            totalConsumed = 0
+            while totalConsumed < valueBytes:
+                # Does this work for valuesPerEntry != 1?
+                consumed, data = getVariableWidthValue(entryData, dataStart)
+                dataStart += consumed
+                totalConsumed += consumed
+                values.append(data)
+            if totalConsumed != valueBytes:
+                print "Error: Should consume %s bytes, but consumed %s" % (valueBytes, totalConsumed)
+        tagHashMap[tag] = values
+    # Test that all bytes have been processed if endPos is given.
+    if endPos is not None and dataStart != endPos:
+        # The last entry might have some zero padding bytes, so complain only if non zero bytes are left.
+        for char in entryData[dataStart:endPos]:
+            if char != chr(0x00):
+                print "Warning: There are unprocessed index bytes left: %s" % toHex(entryData[dataStart:endPos])
+                if 0:
+                    print "controlByteCount: %s" % controlByteCount
+                    print "tagTable: %s" % tagTable
+                    print "data: %s" % toHex(entryData[startPos:endPos])
+                    print "tagHashMap: %s" % tagHashMap
+                break
+
+    return tagHashMap
+
+

@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import sys, os, re, uuid
-from xml.sax.saxutils import escape
+from path import pathof
+from xml.sax.saxutils import escape as xmlescape
+from HTMLParser import HTMLParser
+EXTRA_ENTITIES = {'"':'&quot;', "'":"&apos;"}
 
 class OPFProcessor:
     def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False):
@@ -17,8 +20,20 @@ class OPFProcessor:
         self.guidetext = guidetext
         self.used = usedmap
         self.covername = None
+        self.h = HTMLParser()
         # Create a unique urn uuid
         self.BookId = str(uuid.uuid4())
+        self.starting_offset = None
+
+    def escapeit(self, sval, EXTRAS=None):
+        # note, xmlescape and unescape do not work with utf-8 bytestrings
+        # so pre-convert to full unicode and then convert back since opf is utf-8 encoded
+        uval = sval.decode('utf-8')
+        if EXTRAS:
+            ures = xmlescape(self.h.unescape(uval), EXTRAS)
+        else:
+            ures = xmlescape(self.h.unescape(uval))
+        return ures.encode('utf-8')
 
     def writeOPF(self, has_obfuscated_fonts=False):
         # write out the metadata as an OEB 1.0 OPF file
@@ -40,15 +55,16 @@ class OPFProcessor:
             '''
             if key in metadata.keys():
                 for value in metadata[key]:
-                    # Strip all tag attributes for the closing tag.
                     closingTag = tag.split(" ")[0]
-                    data.append('<%s>%s</%s>\n' % (tag, escape(value), closingTag))
+                    res = '<%s>%s</%s>\n' % (tag, self.escapeit(value), closingTag)
+                    data.append(res)
                 del metadata[key]
 
         def handleMetaPairs(data, metadata, key, name):
             if key in metadata.keys():
                 for value in metadata[key]:
-                    data.append('<meta name="%s" content="%s" />\n' % (name, escape(value)))
+                    res = '<meta name="%s" content="%s" />\n' % (name, self.escapeit(value, EXTRA_ENTITIES))
+                    data.append(res)
                 del metadata[key]
 
         data = []
@@ -90,7 +106,7 @@ class OPFProcessor:
                     data.append('<dc:subject BASICCode="'+codeList[i]+'">')
                 else:
                     data.append('<dc:subject>')
-                data.append(escape(metadata['Subject'][i])+'</dc:subject>\n')
+                data.append(self.escapeit(metadata['Subject'][i])+'</dc:subject>\n')
             del metadata['Subject']
         handleTag(data, metadata, 'Description', 'dc:description')
         handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
@@ -144,13 +160,15 @@ class OPFProcessor:
         for metaName in META_TAGS:
             if metaName in metadata.keys():
                 for value in metadata[metaName]:
-                    data.append('<meta name="'+metaName+'" content="'+escape(value)+'" />\n')
+                    data.append('<meta name="'+metaName+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
                     del metadata[metaName]
         for key in metadata.keys():
             for value in metadata[key]:
-                if key == 'StartOffset' and int(value) == 0xffffffff:
-                    value = '0'
-                data.append('<meta name="'+key+'" content="'+escape(value)+'" />\n')
+                if key == 'StartOffset':
+                    if int(value) == 0xffffffff:
+                        value = '0'
+                    self.starting_offset = value
+                data.append('<meta name="'+key+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
             del metadata[key]
         data.append('</metadata>\n')
         # build manifest
@@ -218,19 +236,16 @@ class OPFProcessor:
         if not self.printReplica:
             metaguidetext = ''
             if not self.isK8:
-                # get guide items from metadata (Err, it's been deleted L154?)
-                if 'StartOffset' in metadata.keys():
-                    so = metadata.get('StartOffset')[0]
-                    if int(so) == 0xffffffff:
-                        so = '0'
+                # get guide items from metadata (note starting offset previsouly processed)
+                if self.starting_offset != None:
+                    so = self.starting_offset
                     metaguidetext += '<reference type="text" href="'+self.filenames[0][1]+'#filepos'+so+'" />\n'
-                    del metadata['StartOffset']
             data.append('<guide>\n' + metaguidetext + self.guidetext + '</guide>\n')
         data.append('</package>\n')
         if self.isK8:
             outopf = os.path.join(self.files.k8oebps,'content.opf')
         else:
             outopf = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.opf')
-        file(outopf, 'wb').write("".join(data))
+        open(pathof(outopf), 'wb').write("".join(data))
         if self.isK8:
             return self.BookId
