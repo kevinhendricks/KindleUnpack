@@ -74,7 +74,10 @@
 #       - fixs for file/paths that require full unicode to work properly
 #       - replace subprocess with multiprocessing to remove need for unbuffered stdout
 #  0.61 - renamed to be KindleUnpack and more unicode/utf-8 path bug fixes and other minor fixes
-#  0.62 - fix for multiprocessing on Windows, split fixes, opf improvements 
+#  0.62 - fix for multiprocessing on Windows, split fixes, opf improvements
+#  0.63 - Modified to process right to left page progression books properly.
+#       - Added some id_map_strings and RESC section processing; metadata and
+#       - spine in the RESC are integrated partly to content.opf.
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -84,6 +87,12 @@ WRITE_RAW_DATA = False
 
 SPLIT_COMBO_MOBIS = False
 """ Set to True to split combination mobis into mobi7 and mobi8 pieces. """
+
+PROC_K8RESC = True
+""" Process K8 RESC section. """
+
+# TODO CREATE_COVER_PAGE = False
+#""" Create and insert a cover xhtml page. """
 
 EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
 """ The EOF record content. """
@@ -103,6 +112,10 @@ import os
 
 import locale
 import codecs
+# FIXME Setting setdefaultencoding to 'utf-8' would be better if no side effect occur.
+#reload(sys)
+#sys.setdefaultencoding('utf-8')
+
 from utf8_utils import utf8_argv, add_cp65001_codec, utf8_str
 add_cp65001_codec()
 
@@ -578,10 +591,15 @@ class MobiHeader:
         502 : 'last_update_time',
         503 : 'Updated_Title',
         504 : 'ASIN_(504)',
+        508 : 'Title file-as',
+        517 : 'Creator file-as',
+        522 : 'Publisher file-as',
         524 : 'Language_(524)',
         525 : 'primary-writing-mode',
+        527 : 'page-progression-direction',
         528 : 'Unknown_Logical_Value_(528)',
         529 : 'Original_Source_Description_(529)',
+        534 : 'Unknown_(534)',
         535 : 'Kindlegen_BuildRev_Number',
 
     }
@@ -606,12 +624,13 @@ class MobiHeader:
     id_map_hexstrings = {
         209 : 'Tamper Proof Keys (hex)',
         300 : 'Font Signature (hex)',
-        403 : 'Unknown',
-        405 : 'Unknown',
-        450 : 'Unknown',
-        451 : 'Unknown',
-        452 : 'Unknown',
-        453 : 'Unknown',
+        403 : 'Unknown_(403) (hex)',
+        405 : 'Unknown_(405) (hex)',
+        407 : 'Unknown_(407) (hex)',
+        450 : 'Unknown_(450) (hex)',
+        451 : 'Unknown_(451) (hex)',
+        452 : 'Unknown_(452) (hex)',
+        453 : 'Unknown_(453) (hex)',
 
     }
 
@@ -1040,6 +1059,7 @@ class MobiHeader:
 
 def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
     imgnames = []
+    resc = None
     for mh in mhlst:
         if mh.isK8():
             sect.setsectiondescription(mh.start,"KF8 Header")
@@ -1208,16 +1228,33 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 # resources only exist in K8 ebooks
                 # not sure what they are, looks like
                 # a piece of the top of the original content.opf
-                # file, so only write them out
-                # if DUMP is True
+                unknown1, unknown2, unknown3 = struct.unpack_from('>LLL',data,4)
+                data_ = data[16:]
+                m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)', data_)
+                resc_header = m_header.group()
+                resc_size = fromBase32(m_header.group(1))
+                resc_version = int(m_header.group(2))
+                resc_type = int(m_header.group(3))
+                resc_data = data_[m_header.end():m_header.end()+resc_size]
+                resc = [resc_version, resc_type, resc_data]
+
                 if DUMP:
-                    data = data[4:]
-                    rescname = "resc%05d.dat" % i
+                    rescname = "RESC%05d.dat" % i
                     print "    extracting resource: ", rescname
-                    outrsc = os.path.join(files.imgdir, rescname)
-                    open(pathof(outrsc), 'wb').write(data)
+                    #outrsc = os.path.join(files.imgdir, rescname)
+                    #open(pathof(outrsc), 'wb').write(data)
+                    outrsc = os.path.join(files.outdir, rescname)
+                    f = open(pathof(outrsc), 'w')
+                    f.write('unknown(hex) = {:08X}\n'.format(unknown1))
+                    f.write('unknown(hex) = {:08X}\n'.format(unknown2))
+                    f.write('unknown(hex) = {:08X}\n'.format(unknown3))
+                    f.write(resc_header + '\n')
+                    f.write(resc_data)
+                    f.close()
+
                 imgnames.append(None)
-                sect.setsectiondescription(i,"Mysterious RESC data")
+                #sect.setsectiondescription(i,"Mysterious RESC data")
+                sect.setsectiondescription(i,"K8 RESC section")
                 continue
 
             if data == EOF_RECORD:
@@ -1270,6 +1307,8 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # require other indexes which contain parsing information and the FDST info
             # to process the rawml back into the xhtml files, css files, svg image files, etc
             k8proc = K8Processor(mh, sect, DUMP)
+            if PROC_K8RESC:
+                k8proc.setResc(resc)
             k8proc.buildParts(rawML)
 
             # collect information for the guide first
@@ -1277,10 +1316,10 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # if the guide was empty, add in any guide info from metadata, such as StartOffset
             if not guidetext and 'StartOffset' in metadata.keys():
                 # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
-                # This seems to break on some devices that only honors the first StartOffset (FW 3.4), 
+                # This seems to break on some devices that only honors the first StartOffset (FW 3.4),
                 # because it effectively points at garbage in the mobi8 part.
-                # Taking that into account, we only care about the *last* StartOffset, which 
-                # should always be the correct one in these cases (the one actually pointing 
+                # Taking that into account, we only care about the *last* StartOffset, which
+                # should always be the correct one in these cases (the one actually pointing
                 # to the right place in the mobi8 part).
                 starts = metadata['StartOffset']
                 last_start = starts[-1]
@@ -1340,6 +1379,9 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                     open(pathof(fname),'wb').write(flowpart)
 
             opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
+
+            if PROC_K8RESC:
+                opf.setK8Resc(k8proc.resc)
 
             if obfuscate_data:
                 uuid = opf.writeOPF(True)
@@ -1513,8 +1555,8 @@ def main():
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
     print "kindleunpack v0.62"
-    print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
-    print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "   Based on initial version Copyright c 2009 Charles M. Hannum <root@ihack.net>"
+    print "   Extensions / Improvements Copyright c 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     print "   This program is free software: you can redistribute it and/or modify"
     print "   it under the terms of the GNU General Public License as published by"
     print "   the Free Software Foundation, version 3."
