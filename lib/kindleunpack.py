@@ -78,6 +78,7 @@
 #  0.63 - Modified to process right to left page progression books properly.
 #       - Added some id_map_strings and RESC section processing; metadata and
 #       - spine in the RESC are integrated partly to content.opf.
+#  0.63a- Separeted K8 RESC processor to an individual file. Bug fixes. Added cover page creation.
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -91,8 +92,8 @@ SPLIT_COMBO_MOBIS = False
 PROC_K8RESC = True
 """ Process K8 RESC section. """
 
-# TODO CREATE_COVER_PAGE = False
-#""" Create and insert a cover xhtml page. """
+CREATE_COVER_PAGE = True # XXX experimental
+""" Create and insert a cover xhtml page. """
 
 EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
 """ The EOF record content. """
@@ -134,6 +135,9 @@ from mobi_ncx import ncxExtract
 from mobi_dict import dictSupport
 from mobi_k8proc import K8Processor
 from mobi_split import mobi_split
+# XXX Currently dom modules are not stable enough. insertSpine function is not implement.
+#from mobi_k8resc import K8RESCProcessorDom as K8RESCProcessor, CoverProcessor
+from mobi_k8resc import K8RESCProcessor, CoverProcessor
 
 def describe(data):
     txtans = ''
@@ -1283,6 +1287,21 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 imgnames.append(imgname)
                 sect.setsectiondescription(i,"Image {0:s}".format(imgname))
 
+        # Rename cover image to 'coverXXXXX.ext'
+        if CREATE_COVER_PAGE:
+            if 'CoverOffset' in metadata.keys():
+                i = int(metadata['CoverOffset'][0])
+                if imgnames[i] != None:
+                    old_name = imgnames[i]
+                    if not 'cover' in old_name:
+                        new_name = re.sub(r'image', 'cover', old_name)
+                        imgnames[i] = new_name
+                        oldimg = os.path.join(files.imgdir, old_name)
+                        newimg = os.path.join(files.imgdir, new_name)
+                        if os.path.exists(pathof(oldimg)):
+                            if os.path.exists(pathof(newimg)):
+                                os.remove(pathof(newimg))
+                            os.rename(pathof(oldimg), pathof(newimg))
 
         # FIXME all of this PrintReplica code is untested!
         # Process print replica book.
@@ -1307,8 +1326,6 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # require other indexes which contain parsing information and the FDST info
             # to process the rawml back into the xhtml files, css files, svg image files, etc
             k8proc = K8Processor(mh, sect, DUMP)
-            if PROC_K8RESC:
-                k8proc.setResc(resc)
             k8proc.buildParts(rawML)
 
             # collect information for the guide first
@@ -1316,10 +1333,10 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # if the guide was empty, add in any guide info from metadata, such as StartOffset
             if not guidetext and 'StartOffset' in metadata.keys():
                 # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
-                # This seems to break on some devices that only honors the first StartOffset (FW 3.4),
+                # This seems to break on some devices that only honors the first StartOffset (FW 3.4), 
                 # because it effectively points at garbage in the mobi8 part.
-                # Taking that into account, we only care about the *last* StartOffset, which
-                # should always be the correct one in these cases (the one actually pointing
+                # Taking that into account, we only care about the *last* StartOffset, which 
+                # should always be the correct one in these cases (the one actually pointing 
                 # to the right place in the mobi8 part).
                 starts = metadata['StartOffset']
                 last_start = starts[-1]
@@ -1378,10 +1395,52 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                     fname = os.path.join(files.k8oebps,dir,filename)
                     open(pathof(fname),'wb').write(flowpart)
 
-            opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
-
             if PROC_K8RESC:
-                opf.setK8Resc(k8proc.resc)
+                # Retrieve a spine (and a metadata) from RESC section.
+                # Get correspondences between itemes in a spine in RECS and ones in a skelton.
+                k8resc = K8RESCProcessor(resc)
+                n =  k8proc.getNumberOfParts()
+                for i in range(n):
+                    # Import skelnum and filename to K8RescProcessor.
+                    [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
+                    index = k8resc.getSpineIndexBySkelid(skelnum)
+                    k8resc.setFilenameToSpine(index, filename)
+                #k8resc.createFilenameToSpineIndexDict()
+
+                # XXX experimental
+                if CREATE_COVER_PAGE:
+                    cover = CoverProcessor(files, metadata, imgnames)
+                    # Create a cover page if first spine item has no correspondence.
+                    createCoverPage = False
+                    index = k8resc.getSpineStartIndex()
+                    if k8resc.getSpineSkelid(index) < 0:
+                        createCoverPage = True
+                    else:
+                        filename = k8resc.getFilenameFromSpine(index)
+                        if filename != None:
+                            fname = os.path.join(files.k8oebps, dir, filename)
+                            f = open(pathof(fname), 'r')
+                            if f != None:
+                                xhtml = f.read()
+                                f.close()
+                                cover_img = cover.getImageName()
+                                if cover_img != None and not cover_img in xhtml:
+                                    k8resc.insertSpine(index, 'inserted_cover', -1, None)
+                                    k8resc.createSkelidToSpineIndexDict()
+                                    createCoverPage = True
+                    if createCoverPage:
+                        cover.writeXHTML()
+                        filename = cover.getXHTMLName()
+                        dir = os.path.relpath(files.k8text, files.k8oebps)
+                        filenames.append([dir, filename])
+                        k8resc.setFilenameToSpine(index, filename)
+                        k8resc.setSpineAttribute(index, 'linear', 'no')
+                        guidetext += cover.guide_toxml()
+
+                k8resc.createFilenameToSpineIndexDict()
+                opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext, k8resc)
+            else:
+                opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, guidetext)
 
             if obfuscate_data:
                 uuid = opf.writeOPF(True)
@@ -1555,8 +1614,8 @@ def main():
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
     print "kindleunpack v0.62"
-    print "   Based on initial version Copyright c 2009 Charles M. Hannum <root@ihack.net>"
-    print "   Extensions / Improvements Copyright c 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
+    print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
     print "   This program is free software: you can redistribute it and/or modify"
     print "   it under the terms of the GNU General Public License as published by"
     print "   the Free Software Foundation, version 3."
