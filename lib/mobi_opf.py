@@ -8,7 +8,7 @@ from HTMLParser import HTMLParser
 EXTRA_ENTITIES = {'"':'&quot;', "'":"&apos;"}
 
 class OPFProcessor:
-    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False):
+    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False, k8resc=None):
         self.files = files
         self.metadata = metadata
         self.filenames = filenames
@@ -19,19 +19,13 @@ class OPFProcessor:
         self.printReplica = mh.isPrintReplica()
         self.guidetext = guidetext
         self.used = usedmap
+        self.k8resc = k8resc
         self.covername = None
         self.h = HTMLParser()
         # Create a unique urn uuid
         self.BookId = str(uuid.uuid4())
         self.starting_offset = None
-        self.resc = None
         self.page_progression_direction = None
-
-    def setK8Resc(self, resc=None):
-        """Set informaion in the RESC section of K8 format.
-
-        """
-        self.resc = resc
 
     def escapeit(self, sval, EXTRAS=None):
         # note, xmlescape and unescape do not work with utf-8 bytestrings
@@ -47,7 +41,7 @@ class OPFProcessor:
         # write out the metadata as an OEB 1.0 OPF file
         print "Write opf"
         metadata = self.metadata
-        resc = self.resc
+        k8resc = self.k8resc
 
         META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'ThumbOffset', 'Fake Cover',
                                                 'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
@@ -135,9 +129,9 @@ class OPFProcessor:
 
         # Append metadata in RESC section.
         cover_id = None
-        if resc != None:
-            cover_id = resc.cover_id
-            resc_metadata_ = resc.metadata_toxml()
+        if k8resc != None:
+            cover_id = k8resc.cover_id
+            resc_metadata_ = k8resc.metadata_toxml()
             if len(resc_metadata_) > 0:
                 data.append('<!-- Begin imported from RESC section -->\n')
                 data += resc_metadata_
@@ -203,7 +197,6 @@ class OPFProcessor:
                 data.append('<meta name="'+key+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
             del metadata[key]
         data.append('</metadata>\n')
-
         # build manifest
         data.append('<manifest>\n')
         media_map = {
@@ -219,7 +212,6 @@ class OPFProcessor:
                 '.otf'  : 'application/x-font-opentype',
                 '.css'  : 'text/css'
                 }
-
         spinerefs = []
         idcnt = 0
         for [dir,fname] in self.filenames:
@@ -227,12 +219,13 @@ class OPFProcessor:
             ext = ext.lower()
             media = media_map.get(ext)
             ref = "item%d" % idcnt
-            if resc != None:
-                index = resc.getSpineIndexByFilename(fname)
+            if k8resc != None and k8resc.hasSpine():
+                index = k8resc.getSpineIndexByFilename(fname)
                 if index != None:
-                    itemid = resc.getSpineIdref(index)
-                    ref += '_' + itemid
-                    resc.setSpineIdref(index, ref)
+                    itemid = k8resc.getSpineIdref(index)
+                    #ref += '_' + itemid
+                    ref = itemid
+                    k8resc.setSpineIdref(index, ref)
 
             if dir != '':
                 data.append('<item id="' + ref + '" media-type="' + media + '" href="' + dir + '/' + fname +'" />\n')
@@ -277,8 +270,8 @@ class OPFProcessor:
             spine_start_tag += ' toc="ncx"'
         spine_start_tag += '>\n'
         data.append(spine_start_tag)
-        if resc != None:
-            spine_ = resc.spine_toxml()
+        if k8resc != None and k8resc.hasSpine():
+            spine_ = k8resc.spine_toxml()
             data += spine_
         else:
             for entry in spinerefs:
