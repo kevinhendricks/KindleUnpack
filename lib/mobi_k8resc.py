@@ -643,4 +643,3 @@ class CoverProcessor:
         data = '<reference type="cover" title="{:s}" href="{:s}/{:s}" />\n'.format(\
                 self.title, text_dir, self.cover_page)
         return data
-    

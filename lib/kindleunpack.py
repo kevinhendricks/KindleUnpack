@@ -79,6 +79,8 @@
 #       - Added some id_map_strings and RESC section processing; metadata and
 #       - spine in the RESC are integrated partly to content.opf.
 #  0.63a- Separeted K8 RESC processor to an individual file. Bug fixes. Added cover page creation.
+#  0.64 - minor bug fixes to more properly handle unicode command lines, and support for more jpeg types
+
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -113,7 +115,8 @@ import os
 
 import locale
 import codecs
-# FIXME Setting setdefaultencoding to 'utf-8' would be better if no side effect occur.
+
+# Setting setdefaultencoding to 'utf-8' should be fine (no side effects should occur).
 #reload(sys)
 #sys.setdefaultencoding('utf-8')
 
@@ -135,8 +138,6 @@ from mobi_ncx import ncxExtract
 from mobi_dict import dictSupport
 from mobi_k8proc import K8Processor
 from mobi_split import mobi_split
-# XXX Currently dom modules are not stable enough. insertSpine function is not implement.
-#from mobi_k8resc import K8RESCProcessorDom as K8RESCProcessor, CoverProcessor
 from mobi_k8resc import K8RESCProcessor, CoverProcessor
 
 def describe(data):
@@ -1270,6 +1271,19 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # if reach here should be an image but double check to make sure
             # Get the proper file extension
             imgtype = imghdr.what(None, data)
+
+            # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some 
+            # with only the magic JPEG bytes out there...
+            # ImageMagick handles those, so, do it too.
+            if imgtype is None and data[0:2] == b'\xFF\xD8':
+                # Get last non-null bytes
+                last = len(data)
+                while (data[last-1:last] == b'\x00'):
+                    last-=1
+                # Be extra safe, check the trailing bytes, too.
+                if data[last-2:last] == b'\xFF\xD9':
+                    imgtype = "jpeg"
+
             if imgtype is None:
                 print "Warning: Section %s does not contain a recognised resource" % i
                 imgnames.append(None)
@@ -1303,7 +1317,6 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                                 os.remove(pathof(newimg))
                             os.rename(pathof(oldimg), pathof(newimg))
 
-        # FIXME all of this PrintReplica code is untested!
         # Process print replica book.
         if mh.isPrintReplica() and not k8only:
             filenames = []
@@ -1613,9 +1626,9 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.62"
+    print "kindleunpack v0.64"
     print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
-    print "   Extensions / Improvements Copyright © 2009-2012 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding."
+    print "   Extensions / Improvements Copyright © 2009-2014 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
     print "   This program is free software: you can redistribute it and/or modify"
     print "   it under the terms of the GNU General Public License as published by"
     print "   the Free Software Foundation, version 3."
@@ -1623,7 +1636,7 @@ def main():
     argv=utf8_argv()
     progname = os.path.basename(argv[0])
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hdrs")
+        opts, args = getopt.getopt(argv[1:], "hdrs")
     except getopt.GetoptError, err:
         print str(err)
         usage(progname)
