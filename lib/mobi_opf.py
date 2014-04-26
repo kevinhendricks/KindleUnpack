@@ -244,7 +244,7 @@ class OPFProcessor:
                 media = media_map.get(ext,ext[1:])
                 if fname == self.covername:
                     ref = cover_id
-                    ref += '" properties="cover-image'
+                    # ref += '" properties="cover-image'
                 else:
                     ref = "item%d" % idcnt
 

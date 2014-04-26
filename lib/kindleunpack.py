@@ -80,7 +80,9 @@
 #       - spine in the RESC are integrated partly to content.opf.
 #  0.63a- Separeted K8 RESC processor to an individual file. Bug fixes. Added cover page creation.
 #  0.64 - minor bug fixes to more properly handle unicode command lines, and support for more jpeg types
-
+#  0.64a- Modifed to handle something irregular mobi and azw3 files.
+#  0.64b- Modifed to create k8resc.spine for no RECS files.
+#  0.65 - Bug fixes to shorten title and remove epub3 "properties" to make the output epub2 compliant
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -1238,6 +1240,11 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)', data_)
                 resc_header = m_header.group()
                 resc_size = fromBase32(m_header.group(1))
+                resc_bytes = data_.find('\x00') - m_header.end()
+                # XXX: There is a file which does not match the size retrieved from a base32 string to actual bytes.
+                if resc_size != resc_bytes:
+                    print "Warning: the size of RESC does not match actual bytes. ({:d}bytes vs {:d}bytes)".format(resc_size, resc_bytes)
+                    resc_size = resc_bytes
                 resc_version = int(m_header.group(2))
                 resc_type = int(m_header.group(3))
                 resc_data = data_[m_header.end():m_header.end()+resc_size]
@@ -1272,7 +1279,7 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # Get the proper file extension
             imgtype = imghdr.what(None, data)
 
-            # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some 
+            # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
             # with only the magic JPEG bytes out there...
             # ImageMagick handles those, so, do it too.
             if imgtype is None and data[0:2] == b'\xFF\xD8':
@@ -1346,10 +1353,10 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
             # if the guide was empty, add in any guide info from metadata, such as StartOffset
             if not guidetext and 'StartOffset' in metadata.keys():
                 # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
-                # This seems to break on some devices that only honors the first StartOffset (FW 3.4), 
+                # This seems to break on some devices that only honors the first StartOffset (FW 3.4),
                 # because it effectively points at garbage in the mobi8 part.
-                # Taking that into account, we only care about the *last* StartOffset, which 
-                # should always be the correct one in these cases (the one actually pointing 
+                # Taking that into account, we only care about the *last* StartOffset, which
+                # should always be the correct one in these cases (the one actually pointing
                 # to the right place in the mobi8 part).
                 starts = metadata['StartOffset']
                 last_start = starts[-1]
@@ -1413,6 +1420,13 @@ def process_all_mobi_headers(files, sect, mhlst, K8Boundary, k8only=False):
                 # Get correspondences between itemes in a spine in RECS and ones in a skelton.
                 k8resc = K8RESCProcessor(resc)
                 n =  k8proc.getNumberOfParts()
+                if k8resc.spine == None: # make a spine if not able to retrieve from a RESC section.
+                    spine = [['<spine toc="ncx">', None, None, True, None]]
+                    for i in range(n):
+                        spine.append(['<itemref/>', i, 'skel{:d}'.format(i), False, None])
+                    spine.append(['</spine>', None, None, True, None])
+                    k8resc.spine = spine
+                    k8resc.createSkelidToSpineIndexDict()
                 for i in range(n):
                     # Import skelnum and filename to K8RescProcessor.
                     [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
@@ -1626,7 +1640,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.64"
+    print "kindleunpack v0.65"
     print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensions / Improvements Copyright © 2009-2014 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
     print "   This program is free software: you can redistribute it and/or modify"

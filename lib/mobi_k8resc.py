@@ -640,6 +640,6 @@ class CoverProcessor:
     def guide_toxml(self):
         files = self.files
         text_dir = os.path.relpath(files.k8text, files.k8oebps)
-        data = '<reference type="cover" title="{:s}" href="{:s}/{:s}" />\n'.format(\
-                self.title, text_dir, self.cover_page)
+        data = '<reference type="cover" title="Cover" href="{:s}/{:s}" />\n'.format(\
+                text_dir, self.cover_page)
         return data
