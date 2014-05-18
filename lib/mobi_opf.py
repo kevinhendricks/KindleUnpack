@@ -197,6 +197,7 @@ class OPFProcessor:
                 data.append('<meta name="'+key+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
             del metadata[key]
         data.append('</metadata>\n')
+
         # build manifest
         data.append('<manifest>\n')
         media_map = {
@@ -213,12 +214,30 @@ class OPFProcessor:
                 '.css'  : 'text/css'
                 }
         spinerefs = []
+
+        # Create an id set to prevent id confliction.
+        if k8resc != None and k8resc.hasSpine():
+            istart = k8resc.getSpineStartIndex()
+            iend = k8resc.getSpineEndIndex()
+            itemidset = set(zip(*k8resc.spine)[2][istart:iend] + (cover_id,))
+        else:
+            itemidset = set(cover_id)
+
+        def create_itemid(idcnt):
+            idsuf = 0
+            itemid = "item{0:d}".format(idcnt)
+            while itemid in itemidset:
+                itemid = "item{0:d}-{1:d}".format(idcnt, idsuf)
+                idsuf += 1
+            itemidset.add(itemid)
+            return itemid
+
         idcnt = 0
         for [dir,fname] in self.filenames:
             name, ext = os.path.splitext(fname)
             ext = ext.lower()
             media = media_map.get(ext)
-            ref = "item%d" % idcnt
+            ref = create_itemid(idcnt)
             if k8resc != None and k8resc.hasSpine():
                 index = k8resc.getSpineIndexByFilename(fname)
                 if index != None:
@@ -246,7 +265,7 @@ class OPFProcessor:
                     ref = cover_id
                     # ref += '" properties="cover-image'
                 else:
-                    ref = "item%d" % idcnt
+                    ref = create_itemid(idcnt)
 
                 if ext == '.ttf' or ext == '.otf':
                     data.append('<item id="' + ref + '" media-type="' + media + '" href="Fonts/' + fname +'" />\n')

@@ -42,14 +42,14 @@ class Metadata:
                           self.METADATA_META,
                           self.METADATA_LINK]
 
-        self.re_metadata = re.compile(r'(<metadata[^>]*>)(.*?)(</metadata>)', re.I)
+        self.re_metadata = re.compile(r'(<metadata[^>]*>)(.*?)(</metadata>)', re.I|re.S)
         self.re_attrib = re.compile(r'\s*(?P<attrib>\S+)\s*=\s*"(?P<value>[^"]*)"', re.I)
         self.re_element = re.compile(r'''
                 (?P<comment><!--.*?-->)
             |
                 (?P<start_tag><(?P<tag>\S+).*?((?P<empty>/>)|>))
                 (?(empty)|(?P<content>[^<]*)(?P<end_tag></(?P=tag)>))
-            ''', re.X+re.I)
+            ''', re.X|re.I|re.S)
 
         re_pattern = ''
         tag_types = self.tag_types
@@ -199,13 +199,13 @@ class K8RESCProcessor:
                     self.cover_id = content
                     break
 
-        mo_spine = re.search(r'(<spine[^>]*>)(.*?)(</spine>)', data, re.I)
+        mo_spine = re.search(r'(<spine[^>]*>)(.*?)(</spine>)', data, re.I|re.S)
         if mo_spine != None:
             spine = []
             spine.append([mo_spine.group(1), None, None, True, None])
 
             # process itemrefs
-            data_ = mo_spine.group(2)
+            data_ = re.sub(r'<!--.*?-->', '', mo_spine.group(2), 0, re.S)
             itemrefs = re.findall(r'<[^>]*>', data_)
             re_idref = re.compile(r'(.*?)\s*idref="([^"]*)"(.*)', re.I)
             re_skelid = re.compile(r'(.*?)\s*skelid="([^"]*)"(.*)', re.I)
