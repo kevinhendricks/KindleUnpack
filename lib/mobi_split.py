@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import sys
@@ -23,10 +23,10 @@ mobi_type = 24
 mobi_version = 36
 first_non_text = 80
 title_offset = 84
-first_image_record = 108
+first_resc_record = 108
 first_content_index = 192
 last_content_index = 194
-kf8_last_content_index = 192 # for KF8 mobi headers
+kf8_fdst_index = 192 # for KF8 mobi headers
 fcis_index = 200
 flis_index = 208
 srcs_index = 224
@@ -286,20 +286,19 @@ class mobi_split:
         #     new_fcis += '\x00\x00\x00\x00\x00\x00\x00\x20\x00\x00\x00\x08\x00\x01\x00\x01\x00\x00\x00\x00'
         #     self.result_file7 = writesection(self.result_file7, fcis_secnum, new_fcis)
 
-        firstimage = getint(datain_rec0,first_image_record)
+        firstimage = getint(datain_rec0,first_resc_record)
         lastimage = getint(datain_rec0,last_content_index,'H')
-        #print "First Image, last Image", firstimage,lastimage
+        # print "Old First Image, last Image", firstimage,lastimage
         if lastimage == 0xffff:
             # find the lowest of the next sections and copy up to that.
-            ofs_list = [(kf8_last_content_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
+            ofs_list = [(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
             for ofs,sz in ofs_list:
-                n = getint(datain_kfrec0,ofs,sz)
+                n = getint(datain_rec0,ofs,sz)
                 #print "n",n
                 if n > 0 and n < lastimage:
                     lastimage = n-1
-        #print "First Image, last Image", firstimage,lastimage
+        print "First Image, last Image", firstimage,lastimage
         
-
         # Try to null out FONT and RES, but leave the (empty) PDB record so image refs remain valid
         for i in range(firstimage,lastimage):
             imgsec = readsection(self.result_file7,i)
@@ -310,7 +309,7 @@ class mobi_split:
 
         # create standalone mobi8
         self.result_file8 = deletesectionrange(datain,0,datain_kf8-1)
-        target = getint(datain_kfrec0,first_image_record)
+        target = getint(datain_kfrec0,first_resc_record)
         self.result_file8 = insertsectionrange(datain,firstimage,lastimage,self.result_file8,target)
         datain_kfrec0 =readsection(self.result_file8,0)
 
@@ -340,7 +339,7 @@ class mobi_split:
         datain_kfrec0 = datain_kfrec0[:0x80] + struct.pack('>L',fval) + datain_kfrec0[0x84:]
 
         # properly update other index pointers that have been shifted by the insertion of images
-        ofs_list = [(kf8_last_content_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
+        ofs_list = [(kf8_fdst_index,'L'),(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
         for ofs,sz in ofs_list:
             n = getint(datain_kfrec0,ofs,sz)
             if n != 0xffffffff:

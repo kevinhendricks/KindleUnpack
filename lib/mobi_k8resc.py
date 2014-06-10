@@ -117,6 +117,8 @@ class Metadata:
             #FIxME self.searchCoverId()
 
     def metadata_toxml(self):
+        if self.data == None:
+            return []
         metadata_ = []
         num = self.getNumberOfElements()
         for [element, typeid, tag, attribs, isEmpty, start, content, end] \

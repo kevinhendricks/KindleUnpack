@@ -219,9 +219,11 @@ class OPFProcessor:
         if k8resc != None and k8resc.hasSpine():
             istart = k8resc.getSpineStartIndex()
             iend = k8resc.getSpineEndIndex()
-            itemidset = set(zip(*k8resc.spine)[2][istart:iend] + (cover_id,))
+            itemidset = set(zip(*k8resc.spine)[2][istart:iend])
         else:
-            itemidset = set(cover_id)
+            itemidset = set()
+        if cover_id != None:
+            itemidset.add(cover_id)
 
         def create_itemid(idcnt):
             idsuf = 0
