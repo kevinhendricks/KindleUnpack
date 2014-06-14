@@ -91,7 +91,7 @@ class MainDialog(Tkinter.Frame):
 
         Tkinter.Label(body, text='').grid(row=4, sticky=Tkconstants.E)
         self.dbgvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Debug Mode", variable=self.dbgvar)
+        checkbox = Tkinter.Checkbutton(body, text="Dump Mode", variable=self.dbgvar)
         checkbox.grid(row=4, column=1, sticky=Tkconstants.W)
 
         msg1 = 'Conversion Log \n\n'

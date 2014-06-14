@@ -188,8 +188,8 @@ class K8Processor:
             self.parts.append(skeleton)
             self.partinfo.append([skelnum, 'Text', filename, skelpos, baseptr, aidtext])
 
-        # assembled_text = "".join(self.parts)
-        # open(pathof('assembled_text.dat'),'wb').write(assembled_text)
+        assembled_text = "".join(self.parts)
+        open(pathof('assembled_text.dat'),'wb').write(assembled_text)
 
         # The primary css style sheet is typically stored next followed by any
         # snippets of code that were previously inlined in the
@@ -422,3 +422,22 @@ class K8Processor:
         # opf is encoded utf-8 so must convert any titles properly
         guidetext = unicode(guidetext, self.mh.codec).encode("utf-8")
         return guidetext
+
+
+    def getPageMapText(self, pagemapproc):
+        pagemaptext = ''
+        pagenames = pagemapproc.getNames()
+        pageoffsets = pagemapproc.getOffsets()
+        for i in xrange(len(pagenames)):
+            pos = pageoffsets[i]
+            name = pagenames[i]
+            if name != None and name != "":
+                [pn, dir, filename, skelpos, skelend, aidtext] = self.getSkelInfo(pos)
+                idtext = self.getIDTag(pos)
+                linktgt = filename
+                if idtext != '':
+                    linktgt += '#' + idtext
+                pagemaptext += '<page name="%s" href="%s/%s" />\n' % (name, dir, linktgt)
+        # page-map.xml is encoded utf-8 so must convert any text properly
+        pagemaptext = unicode(pagemaptext, self.mh.codec).encode("utf-8")
+        return pagemaptext
