@@ -8,7 +8,7 @@ from HTMLParser import HTMLParser
 EXTRA_ENTITIES = {'"':'&quot;', "'":"&apos;"}
 
 class OPFProcessor:
-    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, guidetext=False, k8resc=None):
+    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, pagemapxml, guidetext=False, k8resc=None):
         self.files = files
         self.metadata = metadata
         self.filenames = filenames
@@ -26,6 +26,7 @@ class OPFProcessor:
         self.BookId = str(uuid.uuid4())
         self.starting_offset = None
         self.page_progression_direction = None
+        self.pagemap = pagemapxml
 
     def escapeit(self, sval, EXTRAS=None):
         # note, xmlescape and unescape do not work with utf-8 bytestrings
@@ -281,6 +282,8 @@ class OPFProcessor:
             else:
                 ncxname = self.files.getInputFileBasename() + '.ncx'
             data.append('<item id="ncx" media-type="application/x-dtbncx+xml" href="' + ncxname +'"></item>\n')
+        if self.pagemap != '':
+            data.append('<item id="map" media-type="application/oebs-page-map+xml" href="page-map.xml"></item>\n')
         data.append('</manifest>\n')
 
         # build spine
