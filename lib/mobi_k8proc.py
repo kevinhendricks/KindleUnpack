@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, struct, re
+import sys, os, struct, re
 from mobi_index import MobiIndex
 from mobi_utils import fromBase32
 from path import pathof
@@ -34,8 +34,9 @@ def reverse_tag_iter(block):
 
 
 class K8Processor:
-    def __init__(self, mh, sect, debug=False):
+    def __init__(self, mh, sect, files, debug=False):
         self.sect = sect
+        self.files = files
         self.mi = MobiIndex(sect)
         self.mh = mh
         self.skelidx = mh.skelidx
@@ -189,7 +190,9 @@ class K8Processor:
             self.partinfo.append([skelnum, 'Text', filename, skelpos, baseptr, aidtext])
 
         assembled_text = "".join(self.parts)
-        open(pathof('assembled_text.dat'),'wb').write(assembled_text)
+        if self.DEBUG:
+            outassembled = os.path.join(self.files.k8dir, 'assembled_text.dat')
+            open(pathof(outassembled),'wb').write(assembled_text)
 
         # The primary css style sheet is typically stored next followed by any
         # snippets of code that were previously inlined in the
@@ -424,20 +427,47 @@ class K8Processor:
         return guidetext
 
 
-    def getPageMapText(self, pagemapproc):
-        pagemaptext = ''
-        pagenames = pagemapproc.getNames()
-        pageoffsets = pagemapproc.getOffsets()
-        for i in xrange(len(pagenames)):
-            pos = pageoffsets[i]
-            name = pagenames[i]
-            if name != None and name != "":
-                [pn, dir, filename, skelpos, skelend, aidtext] = self.getSkelInfo(pos)
-                idtext = self.getIDTag(pos)
-                linktgt = filename
-                if idtext != '':
-                    linktgt += '#' + idtext
-                pagemaptext += '<page name="%s" href="%s/%s" />\n' % (name, dir, linktgt)
-        # page-map.xml is encoded utf-8 so must convert any text properly
-        pagemaptext = unicode(pagemaptext, self.mh.codec).encode("utf-8")
-        return pagemaptext
+    def getPageIDTag(self, pos):
+        # find the first tag with a named anchor (name or id attribute) before pos
+        # but page map offsets need to little more leeway so if the offset points
+        # into a tag look for the next ending tag "/>" or "</" and start your search from there.
+        fname, pn, skelpos, skelend = self.getFileInfo(pos)
+        if pn is None and skelpos is None:
+            print "Error: getIDTag - no file contains ", pos
+        textblock = self.parts[pn]
+        idtbl = []
+        npos = pos - skelpos
+        # if npos inside a tag then search all text before next ending tag
+        pgt = textblock.find('>',npos)
+        plt = textblock.find('<',npos)
+        if plt == npos or pgt < plt:
+            # we are in a tag
+            # so find first ending tag
+            pend1 = textblock.find('/>', npos)
+            pend2 = textblock.find('</', npos)
+            if pend1 != -1 and pend2 != -1:
+                pend = min(pend1, pend2)
+            else:
+                pend = max(pend1, pend2)
+            if pend != -1:
+                npos = pend 
+            else:
+                npos = pgt + 1
+        # find id and name attributes only inside of tags
+        # use a reverse tag search since that is faster
+        #    inside any < > pair find "id=" and "name=" attributes return it
+        #    [^>]* means match any amount of chars except for  '>' char
+        #    [^'"] match any amount of chars except for the quote character
+        #    \s* means match any amount of whitespace
+        textblock = textblock[0:npos]
+        id_pattern = re.compile(r'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        name_pattern = re.compile(r'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        for tag in reverse_tag_iter(textblock):
+            m = id_pattern.match(tag) or name_pattern.match(tag)
+            if m is not None:
+                return m.group(1)
+        if self.DEBUG:
+            print "Found no id in the textblock, link must be to top of file"
+        return ''
+
+

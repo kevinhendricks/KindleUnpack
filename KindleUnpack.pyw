@@ -79,24 +79,31 @@ class MainDialog(Tkinter.Frame):
         button = Tkinter.Button(body, text="Browse...", command=self.get_outpath)
         button.grid(row=1, column=2)
 
-        Tkinter.Label(body, text='').grid(row=2, sticky=Tkconstants.E)
-        self.splitvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Split Combination KF8 Kindle eBooks", variable=self.splitvar)
-        checkbox.grid(row=2, column=1, sticky=Tkconstants.W)
+        Tkinter.Label(body, text='OPTIONAL: APNX file Associated with AZW3').grid(row=2, sticky=Tkconstants.E)
+        self.apnxpath = Tkinter.Entry(body, width=50)
+        self.apnxpath.grid(row=2, column=1, sticky=sticky)
+        self.apnxpath.insert(0, '')
+        button = Tkinter.Button(body, text="Browse...", command=self.get_apnxpath)
+        button.grid(row=2, column=2)
 
         Tkinter.Label(body, text='').grid(row=3, sticky=Tkconstants.E)
-        self.rawvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Write Raw Data", variable=self.rawvar)
+        self.splitvar = Tkinter.IntVar()
+        checkbox = Tkinter.Checkbutton(body, text="Split Combination KF8 Kindle eBooks", variable=self.splitvar)
         checkbox.grid(row=3, column=1, sticky=Tkconstants.W)
 
         Tkinter.Label(body, text='').grid(row=4, sticky=Tkconstants.E)
-        self.dbgvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Dump Mode", variable=self.dbgvar)
+        self.rawvar = Tkinter.IntVar()
+        checkbox = Tkinter.Checkbutton(body, text="Write Raw Data", variable=self.rawvar)
         checkbox.grid(row=4, column=1, sticky=Tkconstants.W)
 
+        Tkinter.Label(body, text='').grid(row=5, sticky=Tkconstants.E)
+        self.dbgvar = Tkinter.IntVar()
+        checkbox = Tkinter.Checkbutton(body, text="Dump Mode", variable=self.dbgvar)
+        checkbox.grid(row=5, column=1, sticky=Tkconstants.W)
+
         msg1 = 'Conversion Log \n\n'
-        self.stext = ScrolledText(body, bd=5, relief=Tkconstants.RIDGE, height=20, width=60, wrap=Tkconstants.WORD)
-        self.stext.grid(row=5, column=0, columnspan=2,sticky=sticky)
+        self.stext = ScrolledText(body, bd=5, relief=Tkconstants.RIDGE, height=30, width=60, wrap=Tkconstants.WORD)
+        self.stext.grid(row=6, column=0, columnspan=2,sticky=sticky)
         self.stext.insert(Tkconstants.END,msg1)
 
         buttons = Tkinter.Frame(self)
@@ -171,6 +178,22 @@ class MainDialog(Tkinter.Frame):
         return
 
 
+    def get_apnxpath(self):
+        cwd = os.getcwdu()
+        cwd = cwd.encode('utf-8')
+        apnxpath = tkFileDialog.askopenfilename(
+            parent=None, title='Optional APNX file associated with AZW3',
+            initialdir=cwd,
+            initialfile=None,
+            defaultextension='.apnx', filetypes=[('Kindle APNX Page Information File', '.apnx'), ('All Files', '.*')])
+        if apnxpath:
+            apnxpath = os.path.normpath(apnxpath)
+            apnxpath = utf8_str(apnxpath)
+            self.apnxpath.delete(0, Tkconstants.END)
+            self.apnxpath.insert(0, apnxpath)
+        return
+
+
     def get_outpath(self):
         ucwd = os.getcwdu()
         cwd = ucwd.encode('utf-8')
@@ -205,11 +228,15 @@ class MainDialog(Tkinter.Frame):
         # now disable the button to prevent multiple launches
         self.sbotton.configure(state='disabled')
         mobipath = utf8_str(self.mobipath.get())
+        apnxpath = utf8_str(self.apnxpath.get())
         outdir = utf8_str(self.outpath.get())
         if not mobipath or not path.exists(mobipath):
             self.status['text'] = 'Specified eBook file does not exist'
             self.sbotton.configure(state='normal')
             return
+        apnxfile = None
+        if apnxpath != "" and path.exists(apnxpath):
+            apnxfile = apnxpath
         if not outdir:
             self.status['text'] = 'No output directory specified'
             self.sbotton.configure(state='normal')
@@ -232,7 +259,7 @@ class MainDialog(Tkinter.Frame):
         log += '\n\n'
         log += 'Please Wait ...\n\n'
         self.stext.insert(Tkconstants.END,log)
-        self.p2 = Process(target=unpackEbook, args=(q, mobipath, outdir, dump, writeraw, splitcombos))
+        self.p2 = Process(target=unpackEbook, args=(q, mobipath, outdir, apnxfile, dump, writeraw, splitcombos))
         self.p2.start()
 
         # python does not seem to allow you to create
@@ -244,12 +271,12 @@ class MainDialog(Tkinter.Frame):
 
 
 # child process / multiprocessing thread starts here
-def unpackEbook(q, infile, outdir, dump, writeraw, splitcombos):
+def unpackEbook(q, infile, outdir, apnxfile, dump, writeraw, splitcombos):
     sys.stdout = QueuedStream(sys.stdout, q)
     sys.stderr = QueuedStream(sys.stderr, q)
     rv = 0
     try:
-        kindleunpack.unpackBook(infile, outdir, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
+        kindleunpack.unpackBook(infile, outdir, apnxfile, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
     except Exception, e:
         print "Error: %s" % e
         rv = 1
