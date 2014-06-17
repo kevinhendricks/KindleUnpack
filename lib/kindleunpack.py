@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 # Changelog
 #  0.11 - Version by adamselene
@@ -91,6 +91,7 @@
 #  0.68 - preliminary support for handling PAGE sections to create page-map.xml
 #  0.69 - preliminary support for CONT and CRES for HD Images
 #  0.70 - preliminary support for decoding apnx files when used with azw3 ebooks
+#  0.71 - extensive refactoring of kindleunpack.py to make it more manageable
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -110,8 +111,8 @@ CREATE_COVER_PAGE = True # XXX experimental
 EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
 """ The EOF record content. """
 
+TERMINATION_INDICATOR1 = chr(0x0)
 TERMINATION_INDICATOR2 = chr(0x0) + chr(0x0)
-
 TERMINATION_INDICATOR3 = chr(0x0) + chr(0x0) + chr(0x0)
 
 KINDLEGENSRC_FILENAME = "kindlegensrc.zip"
@@ -130,1054 +131,299 @@ import os
 import locale
 import codecs
 
-# Setting setdefaultencoding to 'utf-8' should be fine (no side effects should occur).
-#reload(sys)
-#sys.setdefaultencoding('utf-8')
-
 from utf8_utils import utf8_argv, add_cp65001_codec, utf8_str
 add_cp65001_codec()
+from path import pathof
+
 
 import array, struct, re, imghdr, zlib, zipfile, datetime
 import getopt, binascii
 
-from path import pathof
-import path
+class unpackException(Exception):
+    pass
 
-# import the mobiunpack support libraries
+
+# import the kindleunpack support libraries
+from unpack_structure import fileNames
+from mobi_sectioner import Sectionizer, describe
+from mobi_header import MobiHeader, dump_contexth
 from mobi_utils import getLanguage, toHex, fromBase32, toBase32, mangle_fonts
-from mobi_uncompress import HuffcdicReader, PalmdocReader, UncompressedReader
 from mobi_opf import OPFProcessor
 from mobi_html import HTMLProcessor, XHTMLK8Processor
 from mobi_ncx import ncxExtract
-from mobi_dict import dictSupport
 from mobi_k8proc import K8Processor
 from mobi_split import mobi_split
 from mobi_k8resc import K8RESCProcessor, CoverProcessor
 from mobi_pagemap import PageMapProcessor
+from mobi_dict import dictSupport
 
-def describe(data):
-    txtans = ''
-    hexans = data.encode('hex')
-    for i in data:
-        if ord(i) < 32 or ord(i) > 127:
-            txtans += '?'
+
+def renameCoverImage(metadata, files, imgnames):
+    global CREATE_COVER_PAGE
+    if CREATE_COVER_PAGE:
+        if 'CoverOffset' in metadata.keys():
+            i = int(metadata['CoverOffset'][0])
+            if imgnames[i] != None:
+                old_name = imgnames[i]
+                if not 'cover' in old_name:
+                    new_name = re.sub(r'image', 'cover', old_name)
+                    imgnames[i] = new_name
+                    oldimg = os.path.join(files.imgdir, old_name)
+                    newimg = os.path.join(files.imgdir, new_name)
+                    if os.path.exists(pathof(oldimg)):
+                        if os.path.exists(pathof(newimg)):
+                            os.remove(pathof(newimg))
+                        os.rename(pathof(oldimg), pathof(newimg))
+    return imgnames
+
+
+def processSRCS(i, files, imgnames, sect, data):
+    # extract the source zip archive and save it.
+    print "File contains kindlegen source archive, extracting as %s" % KINDLEGENSRC_FILENAME
+    srcname = os.path.join(files.outdir, KINDLEGENSRC_FILENAME)
+    open(pathof(srcname), 'wb').write(data[16:])
+    imgnames.append(None)
+    sect.setsectiondescription(i,"Zipped Source Files")
+    return imgnames
+
+
+def processPAGE(i, files, imgnames, sect, data, pagemapproc):
+    # process the page map information so it can be further processed later
+    pagemapproc = PageMapProcessor(mh, data)
+    imgnames.append(None)
+    sect.setsectiondescription(i,"PageMap")
+    return imagenames, pagemapproc
+
+
+def processCMET(i, files, imgnames, sect, data):
+    # extract the build log
+    print "File contains kindlegen build log, extracting as %s" % KINDLEGENLOG_FILENAME
+    srcname = os.path.join(files.outdir, KINDLEGENLOG_FILENAME)
+    open(pathof(srcname), 'wb').write(data[10:])
+    imgnames.append(None)
+    sect.setsectiondescription(i,"Kindlegen log")
+    return imgnames
+
+
+# fonts only exist in KF8 ebooks
+# Format:  bytes  0 -  3:  'FONT'    
+#          bytes  4 -  7:  uncompressed size
+#          bytes  8 - 11:  flags
+#              flag bit 0x0001 - zlib compression
+#              flag bit 0x0002 - obfuscated with xor string
+#          bytes 12 - 15:  offset to start of compressed font data
+#          bytes 16 - 19:  length of xor string stored before the start of the comnpress font data
+#          bytes 20 - 23:  start of xor string
+def processFONT(i, files, imgnames, sect, data, obfuscate_data):
+    fontname = "font%05d" % i
+    ext = '.dat'
+    font_error = False
+    font_data = data 
+    try:
+        usize, fflags, dstart, xor_len, xor_start = struct.unpack_from('>LLLLL',data,4)
+    except:
+        print "Failed to extract font: {0:s} from section {1:d}".format(fontname,i)
+        font_error = True
+        ext = '.failed'
+        pass
+    if not font_error:
+        print "Extracting font:", fontname
+        font_data = data[dstart:]
+        extent = len(font_data)
+        extent = min(extent, 1040)
+        if fflags & 0x0002:
+            # obfuscated so need to de-obfuscate the first 1040 bytes
+            key = bytearray(data[xor_start: xor_start+ xor_len])
+            buf = bytearray(font_data)
+            for n in xrange(extent):
+                buf[n] ^=  key[n%xor_len]
+            font_data = bytes(buf)
+        if fflags & 0x0001:
+            # ZLIB compressed data
+            font_data = zlib.decompress(font_data)
+        hdr = font_data[0:4]
+        if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
+            ext = '.ttf'
+        elif hdr == 'OTTO':
+            ext = '.otf'
         else:
-            txtans += i
-    return '"' + txtans + '"' + ' 0x'+ hexans
+            print "Warning: unknown font header %s" % hdr.encode('hex')
+        if (ext == '.ttf' or ext == '.otf') and (fflags & 0x0002):
+            obfuscate_data.append(fontname + ext)
+        fontname += ext
+        outfnt = os.path.join(files.imgdir, fontname)
+        open(pathof(outfnt), 'wb').write(font_data)
+        imgnames.append(fontname)
+        sect.setsectiondescription(i,"Font {0:s}".format(fontname))
+    return imgnames, obfuscate_data
 
-class unpackException(Exception):
-    pass
 
-class ZipInfo(zipfile.ZipInfo):
-    def __init__(self, *args, **kwargs):
-        if 'compress_type' in kwargs:
-            compress_type = kwargs.pop('compress_type')
-        super(ZipInfo, self).__init__(*args, **kwargs)
-        self.compress_type = compress_type
+def processCRES(i, files, imgnames, sect, data):
+    # extract an HDImage
+    global DUMP
+    data = data[12:]
+    imgtype = imghdr.what(None, data)
 
-class fileNames:
-    def __init__(self, infile, outdir):
-        self.infile = infile
-        self.outdir = outdir
-        if not path.exists(outdir):
-            path.mkdir(outdir)
-        self.mobi7dir = os.path.join(outdir,'mobi7')
-        if not path.exists(self.mobi7dir):
-            path.mkdir(self.mobi7dir)
-        self.imgdir = os.path.join(self.mobi7dir, 'Images')
-        if not path.exists(self.imgdir):
-            path.mkdir(self.imgdir)
-        self.hdimgdir = os.path.join(outdir,'HDImages')
-        if not path.exists(self.hdimgdir):
-            path.mkdir(self.hdimgdir)
-        self.outbase = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0])
+    # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
+    # with only the magic JPEG bytes out there...
+    # ImageMagick handles those, so, do it too.
+    if imgtype is None and data[0:2] == b'\xFF\xD8':
+        # Get last non-null bytes
+        last = len(data)
+        while (data[last-1:last] == b'\x00'):
+            last-=1
+        # Be extra safe, check the trailing bytes, too.
+        if data[last-2:last] == b'\xFF\xD9':
+            imgtype = "jpeg"
 
-    def getInputFileBasename(self):
-        return os.path.splitext(os.path.basename(self.infile))[0]
-
-    def makeK8Struct(self):
-        outdir = self.outdir
-        self.k8dir = os.path.join(self.outdir,'mobi8')
-        if not path.exists(self.k8dir):
-            path.mkdir(self.k8dir)
-        self.k8metainf = os.path.join(self.k8dir,'META-INF')
-        if not path.exists(self.k8metainf):
-            path.mkdir(self.k8metainf)
-        self.k8oebps = os.path.join(self.k8dir,'OEBPS')
-        if not path.exists(self.k8oebps):
-            path.mkdir(self.k8oebps)
-        self.k8images = os.path.join(self.k8oebps,'Images')
-        if not path.exists(self.k8images):
-            path.mkdir(self.k8images)
-        self.k8fonts = os.path.join(self.k8oebps,'Fonts')
-        if not path.exists(self.k8fonts):
-            path.mkdir(self.k8fonts)
-        self.k8styles = os.path.join(self.k8oebps,'Styles')
-        if not path.exists(self.k8styles):
-            path.mkdir(self.k8styles)
-        self.k8text = os.path.join(self.k8oebps,'Text')
-        if not path.exists(self.k8text):
-            path.mkdir(self.k8text)
-
-    # recursive zip creation support routine
-    def zipUpDir(self, myzip, tdir, localname):
-        currentdir = tdir
-        if localname != "":
-            currentdir = os.path.join(currentdir,localname)
-        list = path.listdir(currentdir)
-        for file in list:
-            afilename = file
-            localfilePath = os.path.join(localname, afilename)
-            realfilePath = os.path.join(currentdir,file)
-            if path.isfile(realfilePath):
-                myzip.write(pathof(realfilePath), pathof(localfilePath), zipfile.ZIP_DEFLATED)
-            elif path.isdir(realfilePath):
-                self.zipUpDir(myzip, tdir, localfilePath)
-
-    def makeEPUB(self, usedmap, obfuscate_data, uid):
-        bname = os.path.join(self.k8dir, self.getInputFileBasename() + '.epub')
-        # Create an encryption key for Adobe font obfuscation
-        # based on the epub's uid
-        if obfuscate_data:
-            key = re.sub(r'[^a-fA-F0-9]', '', uid)
-            key = binascii.unhexlify((key + key)[:32])
-
-        # copy over all images and fonts that are actually used in the ebook
-        # and remove all font files from mobi7 since not supported
-        imgnames = path.listdir(self.imgdir)
-        for name in imgnames:
-            if usedmap.get(name,'not used') == 'used':
-                filein = os.path.join(self.imgdir,name)
-                if name.endswith(".ttf"):
-                    fileout = os.path.join(self.k8fonts,name)
-                elif name.endswith(".otf"):
-                    fileout = os.path.join(self.k8fonts,name)
-                elif name.endswith(".failed"):
-                    fileout = os.path.join(self.k8fonts,name)
-                else:
-                    fileout = os.path.join(self.k8images,name)
-                data = open(pathof(filein),'rb').read()
-                if obfuscate_data:
-                    if name in obfuscate_data:
-                        data = mangle_fonts(key, data)
-                open(pathof(fileout),'wb').write(data)
-                if name.endswith(".ttf") or name.endswith(".otf"):
-                    os.remove(pathof(filein))
-
-        # opf file name hard coded to "content.opf"
-        container = '<?xml version="1.0" encoding="UTF-8"?>\n'
-        container += '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n'
-        container += '    <rootfiles>\n'
-        container += '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
-        container += '    </rootfiles>\n</container>\n'
-        fileout = os.path.join(self.k8metainf,'container.xml')
-        open(pathof(fileout),'wb').write(container)
-
-        if obfuscate_data:
-            encryption = '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" \
-xmlns:enc="http://www.w3.org/2001/04/xmlenc#" xmlns:deenc="http://ns.adobe.com/digitaleditions/enc">\n'
-            for font in obfuscate_data:
-                encryption += '  <enc:EncryptedData>\n'
-                encryption += '    <enc:EncryptionMethod Algorithm="http://ns.adobe.com/pdf/enc#RC"/>\n'
-                encryption += '    <enc:CipherData>\n'
-                encryption += '      <enc:CipherReference URI="OEBPS/Fonts/' + font + '"/>\n'
-                encryption += '    </enc:CipherData>\n'
-                encryption += '  </enc:EncryptedData>\n'
-            encryption += '</encryption>\n'
-            fileout = os.path.join(self.k8metainf,'encryption.xml')
-            open(pathof(fileout),'wb').write(encryption)
-
-        # ready to build epub
-        self.outzip = zipfile.ZipFile(pathof(bname), 'w')
-
-        # add the mimetype file uncompressed
-        mimetype = 'application/epub+zip'
-        fileout = os.path.join(self.k8dir,'mimetype')
-        open(pathof(fileout),'wb').write(mimetype)
-        nzinfo = ZipInfo('mimetype', compress_type=zipfile.ZIP_STORED)
-        self.outzip.writestr(nzinfo, mimetype)
-
-        self.zipUpDir(self.outzip,self.k8dir,'META-INF')
-
-        self.zipUpDir(self.outzip,self.k8dir,'OEBPS')
-        self.outzip.close()
-
-def datetimefrompalmtime(palmtime):
-    if palmtime > 0x7FFFFFFF:
-        pythondatetime = datetime.datetime(year=1904,month=1,day=1)+datetime.timedelta(seconds=palmtime)
+    if imgtype is None:
+        print "Warning: Section %s does not contain a recognised resource" % i
+        imgnames.append(None)
+        sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s" % describe(data[0:4]))
+        if DUMP:
+            fname = "unknown%05d.dat" % i
+            outname= os.path.join(files.outdir, fname)
+            open(pathof(outname), 'wb').write(data)
+            sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
     else:
-        pythondatetime = datetime.datetime(year=1970,month=1,day=1)+datetime.timedelta(seconds=palmtime)
-    return pythondatetime
+        imgname = "HDimage%05d.%s" % (i, imgtype)
+        print "Extracting HD image: {0:s} from section {1:d}".format(imgname,i)
+        outimg = os.path.join(files.hdimgdir, imgname)
+        open(pathof(outimg), 'wb').write(data)
+        imgnames.append(None)
+        sect.setsectiondescription(i,"Optional HD Image {0:s}".format(imgname))
+
+    return imgnames
 
 
-class Sectionizer:
-    def __init__(self, filename):
-        self.data = open(pathof(filename), 'rb').read()
-        self.palmheader = self.data[:78]
-        self.palmname = self.data[:32]
-        self.ident = self.palmheader[0x3C:0x3C+8]
-        self.num_sections, = struct.unpack_from('>H', self.palmheader, 76)
-        self.filelength = len(self.data)
-        sectionsdata = struct.unpack_from('>%dL' % (self.num_sections*2), self.data, 78) + (self.filelength, 0)
-        self.sectionoffsets = sectionsdata[::2]
-        self.sectionattributes = sectionsdata[1::2]
-        self.sectiondescriptions = ["" for x in range(self.num_sections+1)]
-        self.sectiondescriptions[-1] = "File Length Only"
+def processCONT(i, files, imgnames, sect, data):
+    global DUMP
+    # process a container header, most of this is unknown
+    # right now only extract its EXTH
+    dt = data[0:12]
+    if dt == "CONTBOUNDARY":
+        imgnames.append(None)
+        sect.setsectiondescription(i,"CONTAINER BOUNDARY")
         return
+    sect.setsectiondescription(i,"CONT Header")
+    if DUMP:
+        cpage, = struct.unpack_from('>L', data, 12)
+        contexth = data[48:]
+        print "\n\nContainer EXTH Dump"
+        dump_contexth(cpage, contexth)
+    imgnames.append(None)
+    return imgnames
 
-    def dumpsectionsinfo(self):
-        print "Section     Offset  Length      UID Attribs Description"
-        for i in xrange(self.num_sections):
-            print "%3d %3X  0x%07X 0x%05X % 8d % 7d %s" % (i,i, self.sectionoffsets[i], self.sectionoffsets[i+1] - self.sectionoffsets[i], self.sectionattributes[i]&0xFFFFFF, (self.sectionattributes[i]>>24)&0xFF, self.sectiondescriptions[i])
-        print "%3d %3X  0x%07X                          %s" % (self.num_sections,self.num_sections, self.sectionoffsets[self.num_sections], self.sectiondescriptions[self.num_sections])
 
-    def setsectiondescription(self, section, description):
-        if section < len(self.sectiondescriptions):
-            self.sectiondescriptions[section] = description
+def processkind(i, files, imgnames, sect, data):
+    global DUMP
+    dt = data[0:12]
+    if dt == "kindle:embed":
+        if DUMP:
+            print "\n\nHD Image Container Description String"
+            print data
+        sect.setsectiondescription(i,"HD Image Container Description String")
+        imgnames.append(None)
+    return imgnames
+
+
+def processRESC(i, files, imgnames, sect, data, resc):
+    global DUMP
+    # spine information from the original content.opf
+    unknown1, unknown2, unknown3 = struct.unpack_from('>LLL',data,4)
+    data_ = data[16:]
+    m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)', data_)
+    resc_header = m_header.group()
+    resc_size = fromBase32(m_header.group(1))
+    resc_version = int(m_header.group(2))
+    resc_type = int(m_header.group(3))
+
+    resc_rawbytes = len(data_) - m_header.end()
+    if resc_rawbytes == resc_size:
+        # Most RESC has a nul string at its tail but some does not.
+        resc_length = resc_size
+    else:
+        end_pos = data_.find('\x00', m_header.end())
+        if end_pos < 0:
+            resc_length = resc_rawbytes
         else:
-            print "Section out of range: %d, description %s" % (section,description)
-
-    def dumppalmheader(self):
-        print "Palm Database Header"
-        print "Database name: " + repr(self.palmheader[:32])
-        dbattributes, = struct.unpack_from('>H', self.palmheader, 32)
-        print "Bitfield attributes: 0x%0X" % dbattributes,
-        if dbattributes != 0:
-            print " ( ",
-            if (dbattributes & 2):
-                print "Read-only; ",
-            if (dbattributes & 4):
-                print "Dirty AppInfoArea; ",
-            if (dbattributes & 8):
-                print "Needs to be backed up; ",
-            if (dbattributes & 16):
-                print "OK to install over newer; ",
-            if (dbattributes & 32):
-                print "Reset after installation; ",
-            if (dbattributes & 64):
-                print "No copying by PalmPilot beaming; ",
-            print ")"
-        else:
-            print ""
-        print "File version: %d" % struct.unpack_from('>H', self.palmheader, 34)[0]
-        dbcreation, = struct.unpack_from('>L', self.palmheader, 36)
-        print "Creation Date: " + str(datetimefrompalmtime(dbcreation))+ (" (0x%0X)" % dbcreation)
-        dbmodification, = struct.unpack_from('>L', self.palmheader, 40)
-        print "Modification Date: " + str(datetimefrompalmtime(dbmodification))+ (" (0x%0X)" % dbmodification)
-        dbbackup, = struct.unpack_from('>L', self.palmheader, 44)
-        if dbbackup != 0:
-            print "Backup Date: " + str(datetimefrompalmtime(dbbackup))+ (" (0x%0X)" % dbbackup)
-        print "Modification No.: %d" % struct.unpack_from('>L', self.palmheader, 48)[0]
-        print "App Info offset: 0x%0X" % struct.unpack_from('>L', self.palmheader, 52)[0]
-        print "Sort Info offset: 0x%0X" % struct.unpack_from('>L', self.palmheader, 56)[0]
-        print "Type/Creator: %s/%s" % (repr(self.palmheader[60:64]), repr(self.palmheader[64:68]))
-        print "Unique seed: 0x%0X" % struct.unpack_from('>L', self.palmheader, 68)[0]
-        expectedzero, = struct.unpack_from('>L', self.palmheader, 72)
-        if expectedzero != 0:
-            print "Should be zero but isn't: %d" % struct.unpack_from('>L', self.palmheader, 72)[0]
-        print "Number of sections: %d" % struct.unpack_from('>H', self.palmheader, 76)[0]
-        return
-
-
-    def loadSection(self, section):
-        before, after = self.sectionoffsets[section:section+2]
-        return self.data[before:after]
-
-def sortedHeaderKeys(mheader):
-    hdrkeys = sorted(mheader.keys(), key=lambda akey: mheader[akey][0])
-    return hdrkeys
-
-
-# this is just guesswork so far, making big assumption that 
-# metavalue key numbers remain the same in the CONT EXTH
-def dump_contexth(cpage, extheader):
-    # determine text encoding
-    codec = 'windows-1252'
-    codec_map = {
-         1252 : 'windows-1252',
-         65001: 'utf-8',
-    }
-    if cpage in codec_map.keys():
-        codec = codec_map[cpage]
-    if extheader == '':
-        return
-    id_map_strings = {
-           1 : 'Drm Server Id (1)',
-           2 : 'Drm Commerce Id (2)',
-           3 : 'Drm Ebookbase Book Id(3)',
-           100 : 'Creator_(100)',
-           101 : 'Publisher_(101)',
-           102 : 'Imprint_(102)',
-           103 : 'Description_(103)',
-           104 : 'ISBN_(104)',
-           105 : 'Subject_(105)',
-           106 : 'Published_(106)',
-           107 : 'Review_(107)',
-           108 : 'Contributor_(108)',
-           109 : 'Rights_(109)',
-           110 : 'SubjectCode_(110)',
-           111 : 'Type_(111)',
-           112 : 'Source_(112)',
-           113 : 'ASIN_(113)',
-           114 : 'versionNumber_(114)',
-           117 : 'Adult_(117)',
-           118 : 'Price_(118)',
-           119 : 'Currency_(119)',
-           122 : 'fixed-layout_(122)',
-           123 : 'book-type_(123)',
-           124 : 'orientation-lock_(124)',
-           126 : 'original-resolution_(126)',
-           127 : 'zero-gutter_(127)',
-           128 : 'zero-margin_(128)',
-           129 : 'K8_Masthead/Cover_Image_(129)',
-           132 : 'RegionMagnification_(132)',
-           200 : 'DictShortName_(200)',
-           208 : 'Watermark_(208)',
-           501 : 'CDE_Type_(501)',
-           502 : 'last_update_time_(502)',
-           503 : 'Updated_Title_(503)',
-           504 : 'ASIN_(504)',
-           524 : 'Language_(524)',
-           525 : 'TextDirection_(525)',
-           528 : 'Unknown_Logical_Value_(528)',
-           535 : 'Kindlegen_BuildRev_Number_(535)',
-           536 : 'Unknown_(536)',
-           538 : 'Image_Size_(538)',
-           539 : 'Mimetype_(539)',
-           542 : 'Unknown_(542)',
-           543 : 'Unknown_(543)',
-    }
-    id_map_values = {
-           115 : 'sample_(115)',
-           116 : 'StartOffset_(116)',
-           121 : 'K8(121)_Boundary_Section_(121)',
-           125 : 'K8_Count_of_Resources_Fonts_Images_(125)',
-           131 : 'K8_Unidentified_Count_(131)',
-           201 : 'CoverOffset_(201)',
-           202 : 'ThumbOffset_(202)',
-           203 : 'Fake_Cover_(203)',
-           204 : 'Creator_Software_(204)',
-           205 : 'Creator_Major_Version_(205)',
-           206 : 'Creator_Minor_Version_(206)',
-           207 : 'Creator_Build_Number_(207)',
-           401 : 'Clipping_Limit_(401)',
-           402 : 'Publisher_Limit_(402)',
-           404 : 'Text_to_Speech_Disabled_(404)',
-    }
-    id_map_hexstrings = {
-           209 : 'Tamper_Proof_Keys_(209_in_hex)',
-           300 : 'Font_Signature_(300_in_hex)',
-    }
-    _length, num_items = struct.unpack('>LL', extheader[4:12])
-    extheader = extheader[12:]
-    pos = 0
-    for _ in range(num_items):
-        id, size = struct.unpack('>LL', extheader[pos:pos+8])
-        content = extheader[pos + 8: pos + size]
-        if id in id_map_strings.keys():
-            name = id_map_strings[id]
-            print '\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8"))
-        elif id in id_map_values.keys():
-            name = id_map_values[id]
-            if size == 9:
-                value, = struct.unpack('B',content)
-                print '\n    Key: "%s"\n        Value: 0x%01x' % (name, value)
-            elif size == 10:
-                value, = struct.unpack('>H',content)
-                print '\n    Key: "%s"\n        Value: 0x%02x' % (name, value)
-            elif size == 12:
-                value, = struct.unpack('>L',content)
-                print '\n    Key: "%s"\n        Value: 0x%04x' % (name, value)
+            resc_length = end_pos - m_header.end()
+        if resc_length != resc_size:
+            if resc_rawbytes > resc_size:
+                print "Warning: the RESC section length({:d}bytes) does not match to indicated size({:d}bytes).".format(resc_length, resc_size)
             else:
-                print "\nError: Value for %s has unexpected size of %s" % (name, size)
-        elif id in id_map_hexstrings.keys():
-            name = id_map_hexstrings[id]
-            print '\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
-        else:
-            print "\nWarning: Unknown metadata with id %s found" % id
-            name = str(id) + ' (hex)'
-            print '    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
-        pos += size
-    return
+                print "Warning: the RESC section might be broken. Its length({:d}bytes) is shorter than indicated size({:d}bytes).".format(resc_length, resc_size)
+    resc_data = data_[m_header.end():m_header.end()+resc_length]
+    resc = [resc_version, resc_type, resc_data]
+
+    if DUMP:
+        rescname = "RESC%05d.dat" % i
+        print "Extracting Resource: ", rescname
+        outrsc = os.path.join(files.outdir, rescname)
+        f = open(pathof(outrsc), 'w')
+        f.write('section size = {0:d} bytes, size in header = {1:d} bytes, valid length = {2:d} bytes\n'.format(resc_rawbytes, resc_size, resc_length))
+        f.write('unknown(hex) = {:08X}\n'.format(unknown1))
+        f.write('unknown(hex) = {:08X}\n'.format(unknown2))
+        f.write('unknown(hex) = {:08X}\n'.format(unknown3))
+        f.write(resc_header + '\n')
+        f.write(resc_data)
+        #f.write(data_[m_header.end():])
+        f.close()
+
+    imgnames.append(None)
+    sect.setsectiondescription(i,"K8 RESC section")
+    return imgnames, resc
 
 
-class MobiHeader:
-    # all values are packed in big endian format
-    palmdoc_header = {
-            'compression_type'  : (0x00, '>H', 2),
-            'fill0'             : (0x02, '>H', 2),
-            'text_length'       : (0x04, '>L', 4),
-            'text_records'      : (0x08, '>H', 2),
-            'max_section_size'  : (0x0a, '>H', 2),
-            'read_pos   '       : (0x0c, '>L', 4),
-    }
+def processImage(i, files, imgnames, sect, data):
+    global DUMP
+    # Extract an Image
 
-    mobi6_header = {
-            'compression_type'  : (0x00, '>H', 2),
-            'fill0'             : (0x02, '>H', 2),
-            'text_length'       : (0x04, '>L', 4),
-            'text_records'      : (0x08, '>H', 2),
-            'max_section_size'  : (0x0a, '>H', 2),
-            'crypto_type'       : (0x0c, '>H', 2),
-            'fill1'             : (0x0e, '>H', 2),
-            'magic'             : (0x10, '4s', 4),
-            'header_length (from MOBI)'     : (0x14, '>L', 4),
-            'type'              : (0x18, '>L', 4),
-            'codepage'          : (0x1c, '>L', 4),
-            'unique_id'         : (0x20, '>L', 4),
-            'version'           : (0x24, '>L', 4),
-            'metaorthindex'     : (0x28, '>L', 4),
-            'metainflindex'     : (0x2c, '>L', 4),
-            'index_names'       : (0x30, '>L', 4),
-            'index_keys'        : (0x34, '>L', 4),
-            'extra_index0'      : (0x38, '>L', 4),
-            'extra_index1'      : (0x3c, '>L', 4),
-            'extra_index2'      : (0x40, '>L', 4),
-            'extra_index3'      : (0x44, '>L', 4),
-            'extra_index4'      : (0x48, '>L', 4),
-            'extra_index5'      : (0x4c, '>L', 4),
-            'first_nontext'     : (0x50, '>L', 4),
-            'title_offset'      : (0x54, '>L', 4),
-            'title_length'      : (0x58, '>L', 4),
-            'language_code'     : (0x5c, '>L', 4),
-            'dict_in_lang'      : (0x60, '>L', 4),
-            'dict_out_lang'     : (0x64, '>L', 4),
-            'min_version'       : (0x68, '>L', 4),
-            'first_resc_offset' : (0x6c, '>L', 4),
-            'huff_offset'       : (0x70, '>L', 4),
-            'huff_num'          : (0x74, '>L', 4),
-            'huff_tbl_offset'   : (0x78, '>L', 4),
-            'huff_tbl_len'      : (0x7c, '>L', 4),
-            'exth_flags'        : (0x80, '>L', 4),
-            'fill3_a'           : (0x84, '>L', 4),
-            'fill3_b'           : (0x88, '>L', 4),
-            'fill3_c'           : (0x8c, '>L', 4),
-            'fill3_d'           : (0x90, '>L', 4),
-            'fill3_e'           : (0x94, '>L', 4),
-            'fill3_f'           : (0x98, '>L', 4),
-            'fill3_g'           : (0x9c, '>L', 4),
-            'fill3_h'           : (0xa0, '>L', 4),
-            'unknown0'          : (0xa4, '>L', 4),
-            'drm_offset'        : (0xa8, '>L', 4),
-            'drm_count'         : (0xac, '>L', 4),
-            'drm_size'          : (0xb0, '>L', 4),
-            'drm_flags'         : (0xb4, '>L', 4),
-            'fill4_a'           : (0xb8, '>L', 4),
-            'fill4_b'           : (0xbc, '>L', 4),
-            'first_content'     : (0xc0, '>H', 2),
-            'last_content'      : (0xc2, '>H', 2),
-            'unknown0'          : (0xc4, '>L', 4),
-            'fcis_offset'       : (0xc8, '>L', 4),
-            'fcis_count'        : (0xcc, '>L', 4),
-            'flis_offset'       : (0xd0, '>L', 4),
-            'flis_count'        : (0xd4, '>L', 4),
-            'unknown1'          : (0xd8, '>L', 4),
-            'unknown2'          : (0xdc, '>L', 4),
-            'srcs_offset'       : (0xe0, '>L', 4),
-            'srcs_count'        : (0xe4, '>L', 4),
-            'unknown3'          : (0xe8, '>L', 4),
-            'unknown4'          : (0xec, '>L', 4),
-            'fill5'             : (0xf0, '>H', 2),
-            'traildata_flags'   : (0xf2, '>H', 2),
-            'ncx_index'         : (0xf4, '>L', 4),
-            'unknown5'          : (0xf8, '>L', 4),
-            'unknown6'          : (0xfc, '>L', 4),
-            'datp_offset'       : (0x100, '>L', 4),
-            'unknown7'          : (0x104, '>L', 4),
-            'Unknown    '       : (0x108, '>L', 4),
-            'Unknown    '       : (0x10C, '>L', 4),
-            'Unknown    '       : (0x110, '>L', 4),
-            'Unknown    '       : (0x114, '>L', 4),
-            'Unknown    '       : (0x118, '>L', 4),
-            'Unknown    '       : (0x11C, '>L', 4),
-            'Unknown    '       : (0x120, '>L', 4),
-            'Unknown    '       : (0x124, '>L', 4),
-            'Unknown    '       : (0x128, '>L', 4),
-            'Unknown    '       : (0x12C, '>L', 4),
-            'Unknown    '       : (0x130, '>L', 4),
-            'Unknown    '       : (0x134, '>L', 4),
-            'Unknown    '       : (0x138, '>L', 4),
-            'Unknown    '       : (0x11C, '>L', 4),
-            }
+    # Get the proper file extension
+    imgtype = imghdr.what(None, data)
 
-    mobi8_header = {
-            'compression_type'  : (0x00, '>H', 2),
-            'fill0'             : (0x02, '>H', 2),
-            'text_length'       : (0x04, '>L', 4),
-            'text_records'      : (0x08, '>H', 2),
-            'max_section_size'  : (0x0a, '>H', 2),
-            'crypto_type'       : (0x0c, '>H', 2),
-            'fill1'             : (0x0e, '>H', 2),
-            'magic'             : (0x10, '4s', 4),
-            'header_length (from MOBI)'     : (0x14, '>L', 4),
-            'type'              : (0x18, '>L', 4),
-            'codepage'          : (0x1c, '>L', 4),
-            'unique_id'         : (0x20, '>L', 4),
-            'version'           : (0x24, '>L', 4),
-            'metaorthindex'     : (0x28, '>L', 4),
-            'metainflindex'     : (0x2c, '>L', 4),
-            'index_names'       : (0x30, '>L', 4),
-            'index_keys'        : (0x34, '>L', 4),
-            'extra_index0'      : (0x38, '>L', 4),
-            'extra_index1'      : (0x3c, '>L', 4),
-            'extra_index2'      : (0x40, '>L', 4),
-            'extra_index3'      : (0x44, '>L', 4),
-            'extra_index4'      : (0x48, '>L', 4),
-            'extra_index5'      : (0x4c, '>L', 4),
-            'first_nontext'     : (0x50, '>L', 4),
-            'title_offset'      : (0x54, '>L', 4),
-            'title_length'      : (0x58, '>L', 4),
-            'language_code'     : (0x5c, '>L', 4),
-            'dict_in_lang'      : (0x60, '>L', 4),
-            'dict_out_lang'     : (0x64, '>L', 4),
-            'min_version'       : (0x68, '>L', 4),
-            'first_resc_offset' : (0x6c, '>L', 4),
-            'huff_offset'       : (0x70, '>L', 4),
-            'huff_num'          : (0x74, '>L', 4),
-            'huff_tbl_offset'   : (0x78, '>L', 4),
-            'huff_tbl_len'      : (0x7c, '>L', 4),
-            'exth_flags'        : (0x80, '>L', 4),
-            'fill3_a'           : (0x84, '>L', 4),
-            'fill3_b'           : (0x88, '>L', 4),
-            'fill3_c'           : (0x8c, '>L', 4),
-            'fill3_d'           : (0x90, '>L', 4),
-            'fill3_e'           : (0x94, '>L', 4),
-            'fill3_f'           : (0x98, '>L', 4),
-            'fill3_g'           : (0x9c, '>L', 4),
-            'fill3_h'           : (0xa0, '>L', 4),
-            'unknown0'          : (0xa4, '>L', 4),
-            'drm_offset'        : (0xa8, '>L', 4),
-            'drm_count'         : (0xac, '>L', 4),
-            'drm_size'          : (0xb0, '>L', 4),
-            'drm_flags'         : (0xb4, '>L', 4),
-            'fill4_a'           : (0xb8, '>L', 4),
-            'fill4_b'           : (0xbc, '>L', 4),
-            'fdst_offset'       : (0xc0, '>L', 4),
-            'fdst_flow_count'   : (0xc4, '>L', 4),
-            'fcis_offset'       : (0xc8, '>L', 4),
-            'fcis_count'        : (0xcc, '>L', 4),
-            'flis_offset'       : (0xd0, '>L', 4),
-            'flis_count'        : (0xd4, '>L', 4),
-            'unknown1'          : (0xd8, '>L', 4),
-            'unknown2'          : (0xdc, '>L', 4),
-            'srcs_offset'       : (0xe0, '>L', 4),
-            'srcs_count'        : (0xe4, '>L', 4),
-            'unknown3'          : (0xe8, '>L', 4),
-            'unknown4'          : (0xec, '>L', 4),
-            'fill5'             : (0xf0, '>H', 2),
-            'traildata_flags'   : (0xf2, '>H', 2),
-            'ncx_index'         : (0xf4, '>L', 4),
-            'fragment_index'    : (0xf8, '>L', 4),
-            'skeleton_index'    : (0xfc, '>L', 4),
-            'datp_offset'       : (0x100, '>L', 4),
-            'guide_index'       : (0x104, '>L', 4),
-            'Unknown    '       : (0x108, '>L', 4),
-            'Unknown    '       : (0x10C, '>L', 4),
-            'Unknown    '       : (0x110, '>L', 4),
-            'Unknown    '       : (0x114, '>L', 4),
-            'Unknown    '       : (0x118, '>L', 4),
-            'Unknown    '       : (0x11C, '>L', 4),
-            'Unknown    '       : (0x120, '>L', 4),
-            'Unknown    '       : (0x124, '>L', 4),
-            'Unknown    '       : (0x128, '>L', 4),
-            'Unknown    '       : (0x12C, '>L', 4),
-            'Unknown    '       : (0x130, '>L', 4),
-            'Unknown    '       : (0x134, '>L', 4),
-            'Unknown    '       : (0x138, '>L', 4),
-            'Unknown    '       : (0x11C, '>L', 4),
-            }
+    # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
+    # with only the magic JPEG bytes out there...
+    # ImageMagick handles those, so, do it too.
+    if imgtype is None and data[0:2] == b'\xFF\xD8':
+        # Get last non-null bytes
+        last = len(data)
+        while (data[last-1:last] == b'\x00'):
+            last-=1
+        # Be extra safe, check the trailing bytes, too.
+        if data[last-2:last] == b'\xFF\xD9':
+            imgtype = "jpeg"
 
-    palmdoc_header_sorted_keys = sortedHeaderKeys(palmdoc_header)
-    mobi6_header_sorted_keys = sortedHeaderKeys(mobi6_header)
-    mobi8_header_sorted_keys = sortedHeaderKeys(mobi8_header)
-
-    id_map_strings = {
-        1 : 'Drm Server Id',
-        2 : 'Drm Commerce Id',
-        3 : 'Drm Ebookbase Book Id',
-        100 : 'Creator',
-        101 : 'Publisher',
-        102 : 'Imprint',
-        103 : 'Description',
-        104 : 'ISBN',
-        105 : 'Subject',
-        106 : 'Published',
-        107 : 'Review',
-        108 : 'Contributor',
-        109 : 'Rights',
-        110 : 'SubjectCode',
-        111 : 'Type',
-        112 : 'Source',
-        113 : 'ASIN',
-        114 : 'versionNumber',
-        117 : 'Adult',
-        118 : 'Price',
-        119 : 'Currency',
-        122 : 'fixed-layout',
-        123 : 'book-type',
-        124 : 'orientation-lock',
-        126 : 'original-resolution',
-        127 : 'zero-gutter',
-        128 : 'zero-margin',
-        129 : 'K8(129)_Masthead/Cover_Image',
-        132 : 'RegionMagnification',
-        200 : 'DictShortName',
-        208 : 'Watermark',
-        501 : 'Document Type',
-        502 : 'last_update_time',
-        503 : 'Updated_Title',
-        504 : 'ASIN_(504)',
-        508 : 'Title file-as',
-        517 : 'Creator file-as',
-        522 : 'Publisher file-as',
-        524 : 'Language_(524)',
-        525 : 'primary-writing-mode',
-        527 : 'page-progression-direction',
-        528 : 'Unknown_Logical_Value_(528)',
-        529 : 'Original_Source_Description_(529)',
-        534 : 'Unknown_(534)',
-        535 : 'Kindlegen_BuildRev_Number',
-        534 : 'Unknown_(536)',
-
-    }
-    id_map_values = {
-        115 : 'sample',
-        116 : 'StartOffset',
-        121 : 'K8(121)_Boundary_Section',
-        125 : 'K8(125)_Count_of_Resources_Fonts_Images',
-        131 : 'K8(131)_Unidentified_Count',
-        201 : 'CoverOffset',
-        202 : 'ThumbOffset',
-        203 : 'Has Fake Cover',
-        204 : 'Creator Software',
-        205 : 'Creator Major Version',
-        206 : 'Creator Minor Version',
-        207 : 'Creator Build Number',
-        401 : 'Clipping Limit',
-        402 : 'Publisher Limit',
-        404 : 'Text to Speech Disabled',
-        406 : 'Rental_Indicator',
-    }
-    id_map_hexstrings = {
-        209 : 'Tamper Proof Keys (hex)',
-        300 : 'Font Signature (hex)',
-        403 : 'Unknown_(403) (hex)',
-        405 : 'Unknown_(405) (hex)',
-        407 : 'Unknown_(407) (hex)',
-        450 : 'Unknown_(450) (hex)',
-        451 : 'Unknown_(451) (hex)',
-        452 : 'Unknown_(452) (hex)',
-        453 : 'Unknown_(453) (hex)',
-
-    }
-
-    def __init__(self, sect, sectNumber):
-        self.sect = sect
-        self.start = sectNumber
-        self.header = self.sect.loadSection(self.start)
-        if len(self.header)>20 and self.header[16:20] == 'MOBI':
-            self.sect.setsectiondescription(0,"Mobipocket Header")
-            self.palm = False
-        elif self.sect.ident == 'TEXtREAd':
-            self.sect.setsectiondescription(0, "PalmDOC Header")
-            self.palm = True
-        else:
-            raise unpackException('Unknown File Format')
-
-        self.records, = struct.unpack_from('>H', self.header, 0x8)
-
-        # set defaults in case this is a PalmDOC
-        self.title = self.sect.palmname
-        self.length = len(self.header)-16
-        self.type = 3
-        self.codepage = 1252
-        self.codec = 'windows-1252'
-        self.unique_id = 0
-        self.version = 0
-        self.hasExth = False
-        self.exth = ''
-        self.exth_offset = self.length + 16
-        self.exth_length = 0
-        self.crypto_type = 0
-        self.firstnontext = self.start+self.records + 1
-        self.firstresource = self.start+self.records + 1
-        self.ncxidx = 0xffffffff
-        self.metaOrthIndex = 0xffffffff
-        self.metaInflIndex = 0xffffffff
-        self.skelidx = 0xffffffff
-        self.dividx = 0xffffffff
-        self.othidx = 0xffffffff
-        self.fdst = 0xffffffff
-        self.mlstart = self.sect.loadSection(self.start+1)[:4]
+    if imgtype is None:
+        print "Warning: Section %s does not contain a recognised resource" % i
+        imgnames.append(None)
+        sect.setsectiondescription(i,"Mysterious Section, first four bytes %s" % describe(data[0:4]))
+        if DUMP:
+            fname = "unknown%05d.dat" % i
+            outname= os.path.join(files.outdir, fname)
+            open(pathof(outname), 'wb').write(data)
+            sect.setsectiondescription(i,"Mysterious Section, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
+    else:
+        imgname = "image%05d.%s" % (i, imgtype)
+        print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
+        outimg = os.path.join(files.imgdir, imgname)
+        open(pathof(outimg), 'wb').write(data)
+        imgnames.append(imgname)
+        sect.setsectiondescription(i,"Image {0:s}".format(imgname))
+    return imgnames
 
 
-        # set up for decompression/unpacking
-        self.compression, = struct.unpack_from('>H', self.header, 0x0)
-        if self.compression == 0x4448:
-            reader = HuffcdicReader()
-            huffoff, huffnum = struct.unpack_from('>LL', self.header, 0x70)
-            huffoff = huffoff + self.start
-            self.sect.setsectiondescription(huffoff,"Huffman Compression Seed")
-            reader.loadHuff(self.sect.loadSection(huffoff))
-            for i in xrange(1, huffnum):
-                self.sect.setsectiondescription(huffoff+i,"Huffman CDIC Compression Seed %d" % i)
-                reader.loadCdic(self.sect.loadSection(huffoff+i))
-            self.unpack = reader.unpack
-        elif self.compression == 2:
-            self.unpack = PalmdocReader().unpack
-        elif self.compression == 1:
-            self.unpack = UncompressedReader().unpack
-        else:
-            raise unpackException('invalid compression type: 0x%4x' % self.compression)
+def processPrintReplica(metadata, files, imgnames, mh):
+    global DUMP
+    global WRITE_RAW_DATA
+    rawML = mh.getRawML()
+    if DUMP or WRITE_RAW_DATA:
+        outraw = os.path.join(files.outdir,files.getInputFileBasename() + '.rawpr')
+        open(pathof(outraw),'wb').write(rawML)
 
-        if self.palm:
-            return
-
-        self.length, self.type, self.codepage, self.unique_id, self.version = struct.unpack('>LLLLL', self.header[20:40])
-        codec_map = {
-            1252 : 'windows-1252',
-            65001: 'utf-8',
-        }
-        if self.codepage in codec_map.keys():
-            self.codec = codec_map[self.codepage]
-
-
-        # title
-        toff, tlen = struct.unpack('>II', self.header[0x54:0x5c])
-        tend = toff + tlen
-        self.title=self.header[toff:tend]
-
-        exth_flag, = struct.unpack('>L', self.header[0x80:0x84])
-        self.hasExth = exth_flag & 0x40
-        self.exth_offset = self.length + 16
-        self.exth_length = 0
-        if self.hasExth:
-            self.exth_length, = struct.unpack_from('>L', self.header, self.exth_offset+4)
-            self.exth_length = ((self.exth_length + 3)>>2)<<2 # round to next 4 byte boundary
-            self.exth = self.header[self.exth_offset:self.exth_offset+self.exth_length]
-
-        # self.mlstart = self.sect.loadSection(self.start+1)
-        # self.mlstart = self.mlstart[0:4]
-        self.crypto_type, = struct.unpack_from('>H', self.header, 0xC)
-
-        # Start sector for additional files such as images, fonts, resources, etc
-        # Can be missing so fall back to default set previously
-        ofst, = struct.unpack_from('>L', self.header, 0x6C)
-        if ofst != 0xffffffff:
-            self.firstresource = ofst + self.start
-        ofst, = struct.unpack_from('>L', self.header, 0x50)
-        if ofst != 0xffffffff:
-            self.firstnontext = ofst + self.start
-
-        if self.isPrintReplica():
-            return
-
-        if self.version < 8:
-            # Dictionary metaOrthIndex
-            self.metaOrthIndex, = struct.unpack_from('>L', self.header, 0x28)
-            if self.metaOrthIndex != 0xffffffff:
-                self.metaOrthIndex += self.start
-
-            # Dictionary metaInflIndex
-            self.metaInflIndex, = struct.unpack_from('>L', self.header, 0x2C)
-            if self.metaInflIndex != 0xffffffff:
-                self.metaInflIndex += self.start
-
-        # handle older headers without any ncxindex info and later
-        # specifically 0xe4 headers
-        if self.length + 16 < 0xf8:
-            return
-
-        # NCX Index
-        self.ncxidx, = struct.unpack('>L', self.header[0xf4:0xf8])
-        if self.ncxidx != 0xffffffff:
-            self.ncxidx += self.start
-
-        # K8 specific Indexes
-        if self.start != 0 or self.version == 8:
-            # Index into <xml> file skeletons in RawML
-            self.skelidx, = struct.unpack_from('>L', self.header, 0xfc)
-            if self.skelidx != 0xffffffff:
-                self.skelidx += self.start
-
-            # Index into <div> sections in RawML
-            self.dividx, = struct.unpack_from('>L', self.header, 0xf8)
-            if self.dividx != 0xffffffff:
-                self.dividx += self.start
-
-            # Index into Other files
-            self.othidx, = struct.unpack_from('>L', self.header, 0x104)
-            if self.othidx != 0xffffffff:
-                self.othidx += self.start
-
-            # dictionaries do not seem to use the same approach in K8's
-            # so disable them
-            self.metaOrthIndex = 0xffffffff
-            self.metaInflIndex = 0xffffffff
-
-            # need to use the FDST record to find out how to properly unpack
-            # the rawML into pieces
-            # it is simply a table of start and end locations for each flow piece
-            self.fdst, = struct.unpack_from('>L', self.header, 0xc0)
-            self.fdstcnt, = struct.unpack_from('>L', self.header, 0xc4)
-            # if cnt is 1 or less, fdst section mumber can be garbage
-            if self.fdstcnt <= 1:
-                self.fdst = 0xffffffff
-            if self.fdst != 0xffffffff:
-                self.fdst += self.start
-                # setting of fdst section description properly handled in mobi_kf8proc
-
-    def dump_exth(self):
-        # determine text encoding
-        codec=self.codec
-        if (not self.hasExth) or (self.exth_length) == 0 or (self.exth == ''):
-            return
-        num_items, = struct.unpack('>L', self.exth[8:12])
-        pos = 12
-        print "Key Size Decription                     Value"
-        for _ in range(num_items):
-            id, size = struct.unpack('>LL', self.exth[pos:pos+8])
-            contentsize = size-8
-            content = self.exth[pos + 8: pos + size]
-            if id in MobiHeader.id_map_strings.keys():
-                exth_name = MobiHeader.id_map_strings[id]
-                print '{0: >3d} {1: >4d} {2: <30s} {3:s}'.format(id, contentsize, exth_name, unicode(content, codec).encode("utf-8"))
-            elif id in MobiHeader.id_map_values.keys():
-                exth_name = MobiHeader.id_map_values[id]
-                if size == 9:
-                    value, = struct.unpack('B',content)
-                    print '{0:3d} byte {1:<30s} {2:d}'.format(id, exth_name, value)
-                elif size == 10:
-                    value, = struct.unpack('>H',content)
-                    print '{0:3d} word {1:<30s} 0x{2:0>4X} ({2:d})'.format(id, exth_name, value)
-                elif size == 12:
-                    value, = struct.unpack('>L',content)
-                    print '{0:3d} long {1:<30s} 0x{2:0>8X} ({2:d})'.format(id, exth_name, value)
-                elif size == 16:
-                    hival, = struct.unpack('>L',content[0:4])
-                    loval, = struct.unpack('>L',content[0:4])
-                    value = hival*0x100000000 + loval
-                    print '{0:3d}   LL {1:<30s} 0x{2:0>16X} ({2:d})'.format(id, exth_name, value)
-                else:
-                    print '{0: >3d} {1: >4d} {2: <30s} (0x{3:s})'.format(id, contentsize, "Bad size for "+exth_name, content.encode('hex'))
-            elif id in MobiHeader.id_map_hexstrings.keys():
-                exth_name = MobiHeader.id_map_hexstrings[id]
-                print '{0:3d} {1:4d} {2:<30s} 0x{3:s}'.format(id, contentsize, exth_name, content.encode('hex'))
-            else:
-                exth_name = "Unknown EXTH ID {0:d}".format(id)
-                print "{0: >3d} {1: >4d} {2: <30s} 0x{3:s}".format(id, contentsize, exth_name, content.encode('hex'))
-            pos += size
-        return
-
-    def dumpheader(self):
-        # first 16 bytes are not part of the official mobiheader
-        # but we will treat it as such
-        # so section 0 is 16 (decimal) + self.length in total == at least 0x108 bytes for Mobi 8 headers
-        print "Dumping section %d, Mobipocket Header version: %d, total length %d" % (self.start,self.version, self.length+16)
-        self.hdr = {}
-        # set it up for the proper header version
-        if self.version == 0:
-            self.mobi_header = MobiHeader.palmdoc_header
-            self.mobi_header_sorted_keys = MobiHeader.palmdoc_header_sorted_keys
-        elif self.version < 8:
-            self.mobi_header = MobiHeader.mobi6_header
-            self.mobi_header_sorted_keys = MobiHeader.mobi6_header_sorted_keys
-        else:
-            self.mobi_header = MobiHeader.mobi8_header
-            self.mobi_header_sorted_keys = MobiHeader.mobi8_header_sorted_keys
-
-        # parse the header information
-        for key in self.mobi_header_sorted_keys:
-            (pos, format, tot_len) = self.mobi_header[key]
-            if pos < (self.length + 16):
-                val, = struct.unpack_from(format, self.header, pos)
-                self.hdr[key] = val
-
-        if 'title_offset' in self.hdr:
-            title_offset = self.hdr['title_offset']
-            title_length = self.hdr['title_length']
-        else:
-            title_offset = 0
-            title_length = 0
-        if title_offset == 0:
-            title_offset = len(self.header)
-            title_length = 0
-            self.title = self.sect.palmname
-        else:
-            self.title = self.header[title_offset:title_offset+title_length]
-            # title record always padded with two nul bytes and then padded with nuls to next 4 byte boundary
-            title_length = ((title_length+2+3)>>2)<<2
-
-        self.extra1 = self.header[self.exth_offset+self.exth_length:title_offset]
-        self.extra2 = self.header[title_offset+title_length:]
-
-
-        print "Mobipocket header from section %d" % self.start
-        print "     Offset  Value Hex Dec        Description"
-        for key in self.mobi_header_sorted_keys:
-            (pos, format, tot_len) = self.mobi_header[key]
-            if pos < (self.length + 16):
-                if key != 'magic':
-                    fmt_string = "0x{0:0>3X} ({0:3d}){1: >" + str(9-2*tot_len) +"s}0x{2:0>" + str(2*tot_len) + "X} {2:10d} {3:s}"
-                else:
-                    fmt_string = "0x{0:0>3X} ({0:3d}){2:>11s}            {3:s}"
-                print fmt_string.format(pos, " ",self.hdr[key], key)
-        print ""
-
-        if self.exth_length > 0:
-            print "EXTH metadata, offset %d, padded length %d" % (self.exth_offset,self.exth_length)
-            self.dump_exth()
-            print ""
-
-        if len(self.extra1) > 0:
-            print "Extra data between EXTH and Title, length %d" % len(self.extra1)
-            print self.extra1.encode('hex')
-            print ""
-
-        if title_length > 0:
-            print "Title in header at offset %d, padded length %d: '%s'" %(title_offset,title_length,self.title)
-            print ""
-
-        if len(self.extra2) > 0:
-            print "Extra data between Title and end of header, length %d" % len(self.extra2)
-            print  self.extra2.encode('hex')
-            print ""
-
-
-    def isPrintReplica(self):
-        return self.mlstart[0:4] == "%MOP"
-
-    def isK8(self):
-        return self.start != 0 or self.version == 8
-
-    def isEncrypted(self):
-        return self.crypto_type != 0
-
-    def hasNCX(self):
-        return self.ncxidx != 0xffffffff
-
-    def isDictionary(self):
-        return self.metaOrthIndex != 0xffffffff
-
-    def getncxIndex(self):
-        return self.ncxidx
-
-    def decompress(self, data):
-        return self.unpack(data)
-
-    def Language(self):
-        langcode = struct.unpack('!L', self.header[0x5c:0x60])[0]
-        langid = langcode & 0xFF
-        sublangid = (langcode >> 10) & 0xFF
-        return [getLanguage(langid, sublangid)]
-
-    def DictInLanguage(self):
-        if self.isDictionary():
-            langcode = struct.unpack('!L', self.header[0x60:0x64])[0]
-            langid = langcode & 0xFF
-            sublangid = (langcode >> 10) & 0xFF
-            if langid != 0:
-                return [getLanguage(langid, sublangid)]
-        return False
-
-    def DictOutLanguage(self):
-        if self.isDictionary():
-            langcode = struct.unpack('!L', self.header[0x64:0x68])[0]
-            langid = langcode & 0xFF
-            sublangid = (langcode >> 10) & 0xFF
-            if langid != 0:
-                return [getLanguage(langid, sublangid)]
-        return False
-
-    def getRawML(self):
-        def getSizeOfTrailingDataEntry(data):
-            num = 0
-            for v in data[-4:]:
-                if ord(v) & 0x80:
-                    num = 0
-                num = (num << 7) | (ord(v) & 0x7f)
-            return num
-        def trimTrailingDataEntries(data):
-            for _ in xrange(trailers):
-                num = getSizeOfTrailingDataEntry(data)
-                data = data[:-num]
-            if multibyte:
-                num = (ord(data[-1]) & 3) + 1
-                data = data[:-num]
-            return data
-        multibyte = 0
-        trailers = 0
-        if self.sect.ident == 'BOOKMOBI':
-            mobi_length, = struct.unpack_from('>L', self.header, 0x14)
-            mobi_version, = struct.unpack_from('>L', self.header, 0x68)
-            if (mobi_length >= 0xE4) and (mobi_version >= 5):
-                flags, = struct.unpack_from('>H', self.header, 0xF2)
-                multibyte = flags & 1
-                while flags > 1:
-                    if flags & 2:
-                        trailers += 1
-                    flags = flags >> 1
-        # get raw mobi markup languge
-        print "Unpacking raw markup language"
-        dataList = []
-        # offset = 0
-        for i in xrange(1, self.records+1):
-            data = trimTrailingDataEntries(self.sect.loadSection(self.start + i))
-            dataList.append(self.unpack(data))
-            if self.isK8():
-                self.sect.setsectiondescription(self.start + i,"KF8 Text Section {0:d}".format(i))
-            elif self.version == 0:
-                self.sect.setsectiondescription(self.start + i,"PalmDOC Text Section {0:d}".format(i))
-            else:
-                self.sect.setsectiondescription(self.start + i,"Mobipocket Text Section {0:d}".format(i))
-        return "".join(dataList)
-
-    def getMetaData(self):
-
-        def addValue(name, value):
-            if name not in self.metadata:
-                self.metadata[name] = [value]
-            else:
-                self.metadata[name].append(value)
-
-        self.metadata = {}
-        codec=self.codec
-        if self.hasExth:
-            extheader=self.exth
-            _length, num_items = struct.unpack('>LL', extheader[4:12])
-            extheader = extheader[12:]
-            pos = 0
-            for _ in range(num_items):
-                id, size = struct.unpack('>LL', extheader[pos:pos+8])
-                content = extheader[pos + 8: pos + size]
-                if id in MobiHeader.id_map_strings.keys():
-                    name = MobiHeader.id_map_strings[id]
-                    addValue(name, unicode(content, codec).encode('utf-8'))
-                elif id in MobiHeader.id_map_values.keys():
-                    name = MobiHeader.id_map_values[id]
-                    if size == 9:
-                        value, = struct.unpack('B',content)
-                        addValue(name, str(value))
-                    elif size == 10:
-                        value, = struct.unpack('>H',content)
-                        addValue(name, str(value))
-                    elif size == 12:
-                        value, = struct.unpack('>L',content)
-                        addValue(name, str(value))
-                    else:
-                        addValue(name, content.encode('hex'))
-                elif id in MobiHeader.id_map_hexstrings.keys():
-                    name = MobiHeader.id_map_hexstrings[id]
-                    addValue(name, content.encode('hex'))
-                else:
-                    name = str(id) + ' (hex)'
-                    addValue(name, content.encode('hex'))
-                pos += size
-        return self.metadata
-
-    def processPrintReplica(self, files):
-        # read in number of tables, and so calculate the start of the indicies into the data
-        rawML = self.getRawML()
+    filenames = []
+    print "Print Replica ebook detected"
+    try:
         numTables, = struct.unpack_from('>L', rawML, 0x04)
         tableIndexOffset = 8 + 4*numTables
         # for each table, read in count of sections, assume first section is a PDF
@@ -1193,9 +439,274 @@ class MobiHeader:
                 else:
                     entryName = os.path.join(files.outdir, files.getInputFileBasename() + ('.%03d.%03d.data' % ((i+1),j)))
                 open(pathof(entryName), 'wb').write(rawML[sectionOffset:(sectionOffset+sectionLength)])
+    except Exception, e:
+        print 'Error processing Print Replica: ' + str(e)
+
+    filenames.append(['', files.getInputFileBasename() + '.pdf'])
+    usedmap = {}
+    for name in imgnames:
+        if name != None:
+            usedmap[name] = 'used'
+    opf = OPFProcessor(files, metadata, filenames, imgnames, False, mh, usedmap)
+    opf.writeOPF()
+
+
+
+def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile=None):
+    global DUMP
+    global WRITE_RAW_DATA
+
+    # extract raw markup langauge
+    rawML = mh.getRawML()
+    if DUMP or WRITE_RAW_DATA:
+        outraw = os.path.join(files.k8dir,files.getInputFileBasename() + '.rawml')
+        open(pathof(outraw),'wb').write(rawML)
+
+    # KF8 require other indexes which contain parsing information and the FDST info
+    # to process the rawml back into the xhtml files, css files, svg image files, etc
+    k8proc = K8Processor(mh, sect, files, DUMP)
+    k8proc.buildParts(rawML)
+
+    # collect information for the guide first
+    guidetext = k8proc.getGuideText()
+
+    # if the guide was empty, add in any guide info from metadata, such as StartOffset
+    if not guidetext and 'StartOffset' in metadata.keys():
+        # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
+        # Taking that into account, we only care about the *last* StartOffset, which
+        # should always be the correct one in these cases (the one actually pointing
+        # to the right place in the mobi8 part).
+        starts = metadata['StartOffset']
+        last_start = starts[-1]
+        last_start = int(last_start)
+        if last_start == 0xffffffff:
+            last_start = 0
+        seq, idtext = k8proc.getDivTblInfo(last_start)
+        filename, idtext = k8proc.getIDTagByPosFid(toBase32(seq), '0000000000')
+        linktgt = filename
+        if idtext != '':
+            linktgt += '#' + idtext
+        guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
+
+    # if apnxfile is passed in use if for page map information 
+    if apnxfile != None and pagemapproc == None:
+        apnxdata = "00000000" + file(apnxfile, 'rb').read()
+        pagemapproc = PageMapProcessor(mh, apnxdata)
+
+    # generate the page map
+    pagemapxml = ''
+    if pagemapproc != None:
+        pagemapxml = pagemapproc.generateKF8PageMapXML(k8proc)
+        outpm = os.path.join(files.k8oebps,'page-map.xml')
+        open(pathof(outpm),'wb').write(pagemapxml)
+        if DUMP:
+            print pagemapproc.getNames()
+            print pagemapproc.getOffsets()
+            print "\n\nPage Map"
+            print pagemapxml
+
+    # process the toc ncx
+    # ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
+    print "Processing ncx / toc"
+    ncx = ncxExtract(mh, files)
+    ncx_data = ncx.parseNCX()
+    # extend the ncx data with filenames and proper internal idtags
+    for i in range(len(ncx_data)):
+        ncxmap = ncx_data[i]
+        [junk1, junk2, junk3, fid, junk4, off] = ncxmap['pos_fid'].split(':')
+        filename, idtag = k8proc.getIDTagByPosFid(fid, off)
+        ncxmap['filename'] = filename
+        ncxmap['idtag'] = idtag
+        ncx_data[i] = ncxmap
+    ncx.writeK8NCX(ncx_data, metadata)
+
+    # convert the rawML to a set of xhtml files
+    print "Building an epub-like structure"
+    htmlproc = XHTMLK8Processor(imgnames, k8proc)
+    usedmap = htmlproc.buildXHTML()
+
+    # write out the xhtml svg, and css files
+    filenames = []
+    n =  k8proc.getNumberOfParts()
+    for i in range(n):
+        part = k8proc.getPart(i)
+        [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
+        filenames.append([dir, filename])
+        fname = os.path.join(files.k8oebps,dir,filename)
+        open(pathof(fname),'wb').write(part)
+    n = k8proc.getNumberOfFlows()
+    for i in range(1, n):
+        [type, format, dir, filename] = k8proc.getFlowInfo(i)
+        flowpart = k8proc.getFlow(i)
+        if format == 'file':
+            filenames.append([dir, filename])
+            fname = os.path.join(files.k8oebps,dir,filename)
+            open(pathof(fname),'wb').write(flowpart)
+
+    k8resc = None
+
+    # ****FIXME****:  pass k8proc into mobi_k8resc routines and offload most of the work done here to mobi_k8resc
+    # process RESC spine information
+
+    if PROC_K8RESC:
+        # Retrieve a spine (and a metadata) from RESC section.
+        # Get correspondences between itemes in a spine in RECS and ones in a skelton.
+        k8resc = K8RESCProcessor(resc)
+        n =  k8proc.getNumberOfParts()
+        if k8resc.spine == None: # make a spine if not able to retrieve from a RESC section.
+            spine = [['<spine toc="ncx">', None, None, True, None]]
+            for i in range(n):
+                spine.append(['<itemref/>', i, 'skel{:d}'.format(i), False, None])
+            spine.append(['</spine>', None, None, True, None])
+            k8resc.spine = spine
+            k8resc.createSkelidToSpineIndexDict()
+        for i in range(n):
+            # Import skelnum and filename to K8RescProcessor.
+            [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
+            index = k8resc.getSpineIndexBySkelid(skelnum)
+            k8resc.setFilenameToSpine(index, filename)
+
+        if CREATE_COVER_PAGE:
+            cover = CoverProcessor(files, metadata, imgnames)
+            # Create a cover page if first spine item has no correspondence.
+            createCoverPage = False
+            index = k8resc.getSpineStartIndex()
+            if k8resc.getSpineSkelid(index) < 0:
+                createCoverPage = True
+            else:
+                filename = k8resc.getFilenameFromSpine(index)
+                if filename != None:
+                    fname = os.path.join(files.k8oebps, dir, filename)
+                    f = open(pathof(fname), 'r')
+                    if f != None:
+                        xhtml = f.read()
+                        f.close()
+                        cover_img = cover.getImageName()
+                        if cover_img != None and not cover_img in xhtml:
+                            k8resc.insertSpine(index, 'inserted_cover', -1, None)
+                            k8resc.createSkelidToSpineIndexDict()
+                            createCoverPage = True
+            if createCoverPage:
+                cover.writeXHTML()
+                filename = cover.getXHTMLName()
+                dir = os.path.relpath(files.k8text, files.k8oebps)
+                filenames.append([dir, filename])
+                k8resc.setFilenameToSpine(index, filename)
+                k8resc.setSpineAttribute(index, 'linear', 'no')
+                guidetext += cover.guide_toxml()
+
+        k8resc.createFilenameToSpineIndexDict()
+
+    # create the opf
+    opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
+    if obfuscate_data:
+        uuid = opf.writeOPF(True)
+    else:
+        uuid = opf.writeOPF()
+
+    # make an epub-like structure of it all
+    files.makeEPUB(usedmap, obfuscate_data, uuid)
+
+
+def processMobi7(mh, metadata, sect, files, imgnames):
+    global DUMP
+    global WRITE_RAW_DATA
+    # An original Mobi
+    rawML = mh.getRawML()
+    if DUMP or WRITE_RAW_DATA:
+        outraw = os.path.join(files.mobi7dir,files.getInputFileBasename() + '.rawml')
+        open(pathof(outraw),'wb').write(rawML)
+
+    # process the toc ncx
+    # ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
+    ncx = ncxExtract(mh, files)
+    ncx_data = ncx.parseNCX()
+    ncx.writeNCX(metadata)
+
+    positionMap = {}
+
+    # if Dictionary build up the positionMap
+    if mh.isDictionary():
+        if mh.DictInLanguage():
+            metadata['DictInLanguage'] = mh.DictInLanguage()
+        if mh.DictOutLanguage():
+            metadata['DictOutLanguage'] = mh.DictOutLanguage()
+        positionMap = dictSupport(mh, sect).getPositionMap()
+
+    # convert the rawml back to Mobi ml
+    proc = HTMLProcessor(files, metadata, imgnames)
+    srctext = proc.findAnchors(rawML, ncx_data, positionMap)
+    srctext, usedmap = proc.insertHREFS()
+
+    # write the proper mobi html
+    filenames=[]
+    fname = files.getInputFileBasename() + '.html'
+    filenames.append(['', fname])
+    outhtml = os.path.join(files.mobi7dir, fname)
+    open(pathof(outhtml), 'wb').write(srctext)
+
+    # extract guidetext from srctext
+    guidetext =''
+    pagemapxml = ''
+    guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
+    if guidematch:
+        replacetext = r'''href="'''+filenames[0][1]+r'''#filepos\1"'''
+        guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
+        guidetext += '\n'
+        if isinstance(guidetext, unicode):
+            guidetext = guidetext.decode(mh.codec).encode("utf-8")
+        else:
+            guidetext = unicode(guidetext, mh.codec).encode("utf-8")
+
+    # create an OPF
+    opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext)
+    opf.writeOPF()
+
+
+def processUnknownSections(mh, sect, files, K8Boundary):
+    global DUMP
+    global TERMINATION_INDICATOR1
+    global TERMINATION_INDICATOR2
+    global TERMINATION_INDICATOR3
+    if DUMP:
+        print "Unpacking any remaining unknown records"
+    beg = mh.start
+    end = sect.num_sections
+    if beg < K8Boundary:
+        # then we're processing the first part of a combination file
+        end = K8Boundary
+    for i in xrange(beg, end):
+        if sect.sectiondescriptions[i] == "":
+            data = sect.loadSection(i)
+            type = data[0:4]
+            if  type == TERMINATION_INDICATOR3:
+                description = "Termination Marker 3 Nulls"
+            elif type == TERMINATION_INDICATOR2:
+                description = "Termination Marker 2 Nulls"
+            elif type == TERMINATION_INDICATOR1:
+                description = "Termination Marker 1 Null"
+            elif type == "INDX":
+                fname = "Unknown%05d_INDX.dat" % i
+                description = "Unknown INDX section"
+                if DUMP:
+                    outname= os.path.join(files.outdir, fname)
+                    open(pathof(outname), 'wb').write(data)
+                    print "Extracting %s: %s from section %d" % (description, fname, i)
+                    description = description + ", extracting as %s" % fname
+            else:
+                fname = "unknown%05d.dat" % i
+                description = "Mysterious Section, first four bytes %s" % describe(data[0:4])
+                if DUMP:
+                    outname= os.path.join(files.outdir, fname)
+                    open(pathof(outname), 'wb').write(data)
+                    print "Extracting %s: %s from section %d" % (description, fname, i)
+                    description = description + ", extracting as %s" % fname
+            sect.setsectiondescription(i, description)
 
 
 def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False):
+    global DUMP
+    global WRITE_RAW_DATA
     imgnames = []
     resc = None
     for mh in mhlst:
@@ -1221,63 +732,33 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             open(pathof(mhname), 'wb').write(mh.header)
 
         # process each mobi header
+        metadata = mh.getMetaData()
+        mh.describeHeader(DUMP)
         if mh.isEncrypted():
             raise unpackException('Book is encrypted')
 
-        # build up the metadata
-        metadata = mh.getMetaData()
-        metadata['Language'] = mh.Language()
-        metadata['Title'] = [unicode(mh.title, mh.codec).encode("utf-8")]
-        metadata['Codec'] = [mh.codec]
-        metadata['UniqueID'] = [str(mh.unique_id)]
+        resc = None
+        pagemapproc = None
+        obfuscate_data = []
 
-        if not DUMP:
-            print "Mobi Version:", mh.version
-            print "Codec:", mh.codec
-            print "Title:", mh.title
-            if 'Updated_Title'  in mh.metadata:
-                print "EXTH Title:", str(mh.metadata['Updated_Title'][0])
-            if mh.compression == 0x4448:
-                print "Huffdic compression"
-            elif mh.compression == 2:
-                print "Palmdoc compression"
-            elif mh.compression == 1:
-                print "No compression"
-        else:
-            mh.dumpheader()
+        # first handle all of the different resource sections:  images, resources, fonts, and etc
+        # build up a list of image names to use to postprocess the ebook
 
-        # save the raw markup language
-        rawML = mh.getRawML()
-        mh.rawSize = len(rawML)
-        if DUMP or WRITE_RAW_DATA:
-            ext = '.rawml'
-            if mh.isK8():
-                outraw = os.path.join(files.k8dir,files.getInputFileBasename() + ext)
-            else:
-                if mh.isPrintReplica():
-                    ext = '.rawpr'
-                    outraw = os.path.join(files.outdir,files.getInputFileBasename() + ext)
-                else:
-                    outraw = os.path.join(files.mobi7dir,files.getInputFileBasename() + ext)
-            open(pathof(outraw),'wb').write(rawML)
-
-
-        # process additional sections that represent images, resources, fonts, and etc
-        # build up a list of image names to use to postprocess the rawml
         print "Unpacking images, resources, fonts, etc"
         beg = mh.firstresource
         end = sect.num_sections
         if beg < K8Boundary:
-            # then we're processing the first part of a combination file
+            # processing first part of a combination file
             end = K8Boundary
-        obfuscate_data = []
+
         for i in xrange(beg, end):
             data = sect.loadSection(i)
             type = data[0:4]
+
+            # handle the basics first
             if type in ["FLIS", "FCIS", "FDST", "DATP"]:
                 if DUMP:
-                    fname = "%05d" % i
-                    fname = type + fname
+                    fname = type + "%05d" % i
                     if mh.isK8():
                         fname += "_K8"
                     fname += '.dat'
@@ -1286,514 +767,59 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                     print "Dumping section {0:d} type {1:s} to file {2:s} ".format(i,type,outname)
                 sect.setsectiondescription(i,"Type {0:s}".format(type))
                 imgnames.append(None)
-                continue
             elif type == "SRCS":
-                # The mobi file was created by kindlegen and contains a zip archive with all source files.
-                # Extract the archive and save it.
-                print "File contains kindlegen source archive, extracting as %s" % KINDLEGENSRC_FILENAME
-                srcname = os.path.join(files.outdir, KINDLEGENSRC_FILENAME)
-                open(pathof(srcname), 'wb').write(data[16:])
-                imgnames.append(None)
-                sect.setsectiondescription(i,"Zipped Source Files")
-                continue
+                imgnames = processSRCS(i, files, imgnames, sect, data)
             elif type == "PAGE":
-                # The mobi file was created by kindlegen and contains page map
-                # process the page map information so it can be further processed later
-                pagemapproc = PageMapProcessor(mh, data)
-                # pmapname = os.path.join(files.outdir, 'pagemap.dat')
-                # open(pathof(pmapname), 'wb').write(data)
-                imgnames.append(None)
-                sect.setsectiondescription(i,"PageMap")
-                continue
+                imgnames, pagemapproc = processPAGE(i, files, imgnames, sect, data, pagemapproc)
             elif type == "CMET":
-                # The mobi file was created by kindlegen v2.7 or greater and contains the original build log.
-                # Extract the log and save it.
-                print "File contains kindlegen build log, extracting as %s" % KINDLEGENLOG_FILENAME
-                srcname = os.path.join(files.outdir, KINDLEGENLOG_FILENAME)
-                open(pathof(srcname), 'wb').write(data[10:])
-                imgnames.append(None)
-                sect.setsectiondescription(i,"Kindlegen log")
-                continue
+                imgnames = processCMET(i, files, imgnames, sect, data)
             elif type == "FONT":
-                #print "FONT"
-                # fonts only exist in K8 ebooks
-                # Format:
-                # bytes  0 -  3:  'FONT'
-                # bytes  4 -  7:  uncompressed size
-                # bytes  8 - 11:  flags
-                #                     bit 0x0001 - zlib compression
-                #                     bit 0x0002 - obfuscated with xor string
-                # bytes 12 - 15:  offset to start of compressed font data
-                # bytes 16 - 19:  length of xor string stored before the start of the comnpress font data
-                # bytes 20 - 23:  start of xor string
-                fontname = "font%05d" % i
-                ext = '.dat'
-                font_error = False
-                font_data = data # Raw section data preserved if an error occurs
-                try:
-                    usize, fflags, dstart, xor_len, xor_start = struct.unpack_from('>LLLLL',data,4)
-                except:
-                    print "Failed to extract font: {0:s} from section {1:d}".format(fontname,i)
-                    font_error = True
-                    ext = '.failed'
-                    pass
-                if not font_error:
-                    print "Extracting font:", fontname
-                    font_data = data[dstart:]
-                    extent = len(font_data)
-                    extent = min(extent, 1040)
-                    if fflags & 0x0002:
-                        # obfuscated so need to de-obfuscate the first 1040 bytes
-                        key = bytearray(data[xor_start: xor_start+ xor_len])
-                        buf = bytearray(font_data)
-                        for n in xrange(extent):
-                            buf[n] ^=  key[n%xor_len]
-                        font_data = bytes(buf)
-                    if fflags & 0x0001:
-                        # ZLIB compressed data
-                        font_data = zlib.decompress(font_data)
-                    hdr = font_data[0:4]
-                    if hdr == '\0\1\0\0' or hdr == 'true' or hdr == 'ttcf':
-                        ext = '.ttf'
-                    elif hdr == 'OTTO':
-                        ext = '.otf'
-                    else:
-                        print "Warning: unknown font header %s" % hdr.encode('hex')
-                    if (ext == '.ttf' or ext == '.otf') and (fflags & 0x0002):
-                        obfuscate_data.append(fontname + ext)
-                fontname += ext
-                outfnt = os.path.join(files.imgdir, fontname)
-                open(pathof(outfnt), 'wb').write(font_data)
-                imgnames.append(fontname)
-                sect.setsectiondescription(i,"Font {0:s}".format(fontname))
-                continue
-
+                imgnames, obfuscate_data = processFONT(i, files, imgnames, sect, data, obfuscate_data)
             elif type == "CRES":
-                # this should be a special HD image
-                data = data[12:]
-                imgtype = imghdr.what(None, data)
-
-                # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
-                # with only the magic JPEG bytes out there...
-                # ImageMagick handles those, so, do it too.
-                if imgtype is None and data[0:2] == b'\xFF\xD8':
-                    # Get last non-null bytes
-                    last = len(data)
-                    while (data[last-1:last] == b'\x00'):
-                        last-=1
-                    # Be extra safe, check the trailing bytes, too.
-                    if data[last-2:last] == b'\xFF\xD9':
-                        imgtype = "jpeg"
-
-                if imgtype is None:
-                    print "Warning: Section %s does not contain a recognised resource" % i
-                    imgnames.append(None)
-                    sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s" % describe(data[0:4]))
-                    if DUMP:
-                        fname = "unknown%05d.dat" % i
-                        outname= os.path.join(files.outdir, fname)
-                        open(pathof(outname), 'wb').write(data)
-                        sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
-                else:
-                    imgname = "HDimage%05d.%s" % (i, imgtype)
-                    print "Extracting HD image: {0:s} from section {1:d}".format(imgname,i)
-                    outimg = os.path.join(files.hdimgdir, imgname)
-                    open(pathof(outimg), 'wb').write(data)
-                    imgnames.append(None)
-                    sect.setsectiondescription(i,"Optional HD Image {0:s}".format(imgname))
-                continue
-
+                imgnames = processCRES(i, files, imgnames, sect, data)
             elif type == "CONT":
-                dt = data[0:12]
-                if dt == "CONTBOUNDARY":
-                    imgnames.append(None)
-                    sect.setsectiondescription(i,"CONTAINER BOUNDARY")
-                    continue
-                else:
-                    sect.setsectiondescription(i,"CONT Header")
-                    if DUMP:
-                        cpage, = struct.unpack_from('>L', data, 12)
-                        contexth = data[48:]
-                        print "\n\nContainer EXTH Dump"
-                        dump_contexth(cpage, contexth)
-                    imgnames.append(None)
-                continue
-
+                imgnames = processCONT(i, files, imgnames, sect, data)
             elif type == "kind":
-                dt = data[0:12]
-                if dt == "kindle:embed":
-                    if DUMP:
-                        print "\n\nHD Image Container Description String"
-                        print data
-                    sect.setsectiondescription(i,"HD Image Container Description String")
-                    imgnames.append(None)
-                continue
-
+                imgnames = processkind(i, files, imgnames, sect, data)
             elif type == chr(0xa0) + chr(0xa0) + chr(0xa0) + chr(0xa0): 
                 sect.setsectiondescription(i,"Empty_HD_Image/Resource_Placeholder")
                 imgnames.append(None)
-                continue    
-
             elif type == "RESC":
-                # parts from the original content.opf
-                unknown1, unknown2, unknown3 = struct.unpack_from('>LLL',data,4)
-                data_ = data[16:]
-                m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)', data_)
-                resc_header = m_header.group()
-                resc_size = fromBase32(m_header.group(1))
-                resc_version = int(m_header.group(2))
-                resc_type = int(m_header.group(3))
-
-                resc_rawbytes = len(data_) - m_header.end()
-                if resc_rawbytes == resc_size:
-                    # Most RESC has a nul string at its tail but some does not.
-                    resc_length = resc_size
-                else:
-                    end_pos = data_.find('\x00', m_header.end())
-                    if end_pos < 0:
-                        resc_length = resc_rawbytes
-                    else:
-                        resc_length = end_pos - m_header.end()
-                    if resc_length != resc_size:
-                        if resc_rawbytes > resc_size:
-                            # The RESC in some files do not match the size retrieved from a base32 string to actual bytes.
-                            print "Warning: the RESC section length({:d}bytes) does not match to indicated size({:d}bytes).".format(resc_length, resc_size)
-                        else:
-                            print "Warning: the RESC section might be broken. Its length({:d}bytes) is shorter than indicated size({:d}bytes).".format(resc_length, resc_size)
-                resc_data = data_[m_header.end():m_header.end()+resc_length]
-                resc = [resc_version, resc_type, resc_data]
-
-                if DUMP:
-                    rescname = "RESC%05d.dat" % i
-                    print "    extracting resource: ", rescname
-                    outrsc = os.path.join(files.outdir, rescname)
-                    f = open(pathof(outrsc), 'w')
-                    f.write('section size = {0:d} bytes, size in header = {1:d} bytes, valid length = {2:d} bytes\n'.format(resc_rawbytes, resc_size, resc_length))
-                    f.write('unknown(hex) = {:08X}\n'.format(unknown1))
-                    f.write('unknown(hex) = {:08X}\n'.format(unknown2))
-                    f.write('unknown(hex) = {:08X}\n'.format(unknown3))
-                    f.write(resc_header + '\n')
-                    f.write(resc_data)
-                    #f.write(data_[m_header.end():])
-                    f.close()
-
-                imgnames.append(None)
-                sect.setsectiondescription(i,"K8 RESC section")
-                continue
-
-            if data == EOF_RECORD:
-                imgnames.append(None)
+                imgnames, resc = processRESC(i, files, imgnames, sect, data, resc)
+            elif data == EOF_RECORD:
                 sect.setsectiondescription(i,"End Of File")
-                continue
-
-            if data[0:8] == "BOUNDARY":
                 imgnames.append(None)
+            elif data[0:8] == "BOUNDARY":
                 sect.setsectiondescription(i,"BOUNDARY Marker")
-                continue
-
-            # if reach here should be an image but double check to make sure
-            # Get the proper file extension
-            imgtype = imghdr.what(None, data)
-
-            # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
-            # with only the magic JPEG bytes out there...
-            # ImageMagick handles those, so, do it too.
-            if imgtype is None and data[0:2] == b'\xFF\xD8':
-                # Get last non-null bytes
-                last = len(data)
-                while (data[last-1:last] == b'\x00'):
-                    last-=1
-                # Be extra safe, check the trailing bytes, too.
-                if data[last-2:last] == b'\xFF\xD9':
-                    imgtype = "jpeg"
-
-            if imgtype is None:
-                print "Warning: Section %s does not contain a recognised resource" % i
                 imgnames.append(None)
-                sect.setsectiondescription(i,"Mysterious Section, first four bytes %s" % describe(data[0:4]))
-                if DUMP:
-                    fname = "unknown%05d.dat" % i
-                    outname= os.path.join(files.outdir, fname)
-                    open(pathof(outname), 'wb').write(data)
-                    sect.setsectiondescription(i,"Mysterious Section, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
             else:
-                imgname = "image%05d.%s" % (i, imgtype)
-                print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
-                outimg = os.path.join(files.imgdir, imgname)
-                open(pathof(outimg), 'wb').write(data)
-                imgnames.append(imgname)
-                sect.setsectiondescription(i,"Image {0:s}".format(imgname))
+                # if reached here should be an image ow treat as unknown
+                imgnames = processImage(i, files, imgnames, sect, data)
 
-        # Rename cover image to 'coverXXXXX.ext'
-        if CREATE_COVER_PAGE:
-            if 'CoverOffset' in metadata.keys():
-                i = int(metadata['CoverOffset'][0])
-                if imgnames[i] != None:
-                    old_name = imgnames[i]
-                    if not 'cover' in old_name:
-                        new_name = re.sub(r'image', 'cover', old_name)
-                        imgnames[i] = new_name
-                        oldimg = os.path.join(files.imgdir, old_name)
-                        newimg = os.path.join(files.imgdir, new_name)
-                        if os.path.exists(pathof(oldimg)):
-                            if os.path.exists(pathof(newimg)):
-                                os.remove(pathof(newimg))
-                            os.rename(pathof(oldimg), pathof(newimg))
+        # done unpacking resources
+        # rename cover image to 'coverXXXXX.ext'
+        imgnames = renameCoverImage(metadata, files, imgnames)
 
-        # Process print replica book.
+        # Print Replica
         if mh.isPrintReplica() and not k8only:
-            filenames = []
-            print "Print Replica ebook detected"
-            try:
-                mh.processPrintReplica(files)
-            except Exception, e:
-                print 'Error processing Print Replica: ' + str(e)
-            filenames.append(['', files.getInputFileBasename() + '.pdf'])
-            usedmap = {}
-            for name in imgnames:
-                if name != None:
-                    usedmap[name] = 'used'
-            opf = OPFProcessor(files, metadata, filenames, imgnames, False, mh, usedmap)
-            opf.writeOPF()
+            createPrintReplica(metadata, files, imgnames, mh)
             continue
 
+        # KF8 (Mobi 8)
         if mh.isK8():
-            # K8 mobi
-            # require other indexes which contain parsing information and the FDST info
-            # to process the rawml back into the xhtml files, css files, svg image files, etc
-            k8proc = K8Processor(mh, sect, DUMP)
-            k8proc.buildParts(rawML)
+            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile)
 
-            # collect information for the guide first
-            guidetext = k8proc.getGuideText()
-
-            # if the guide was empty, add in any guide info from metadata, such as StartOffset
-            if not guidetext and 'StartOffset' in metadata.keys():
-                # Apparently, KG 2.5 carries over the StartOffset from the mobi7 part...
-                # This seems to break on some devices that only honors the first StartOffset (FW 3.4),
-                # because it effectively points at garbage in the mobi8 part.
-                # Taking that into account, we only care about the *last* StartOffset, which
-                # should always be the correct one in these cases (the one actually pointing
-                # to the right place in the mobi8 part).
-                starts = metadata['StartOffset']
-                last_start = starts[-1]
-                last_start = int(last_start)
-                if last_start == 0xffffffff:
-                    last_start = 0
-                # Argh!!  Some metadata StartOffsets are the row number of the divtbl
-                # while others are a position in the file - Not sure how to deal with this issue
-                # Safer to assume it is a position
-                seq, idtext = k8proc.getDivTblInfo(last_start)
-                filename, idtext = k8proc.getIDTagByPosFid(toBase32(seq), '0000000000')
-                linktgt = filename
-                if idtext != '':
-                    linktgt += '#' + idtext
-                guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
-
-            # collect information for the page-map.xml
-            pagemapxml = ''
-            if pagemapproc == None and apnxfile != None:
-                apnxdata = file(apnxfile, 'rb').read()
-                apnxdata = "00000000" + apnxdata
-                pagemapproc = PageMapProcessor(mh, apnxdata)
-            if pagemapproc != None:
-                print pagemapproc.getNames()
-                print pagemapproc.getOffsets()
-                pagemapxml = k8proc.getPageMapText(pagemapproc)
-            if pagemapxml != "":
-                pagemapxml = '<page-map xmlns="http://www.idpf.org/2007/opf">\n' + pagemapxml + '</page-map>\n'
-                if DUMP:
-                    print "\n\nPage Map"
-                    print pagemapxml
-                outpm = os.path.join(files.k8oebps,'page-map.xml')
-                open(pathof(outpm),'wb').write(pagemapxml)
-
-            # process the toc ncx
-            # ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
-            print "Processing ncx / toc"
-            ncx = ncxExtract(mh, files)
-            ncx_data = ncx.parseNCX()
-
-            # extend the ncx data with
-            # info about filenames and proper internal idtags
-            for i in range(len(ncx_data)):
-                ncxmap = ncx_data[i]
-                [junk1, junk2, junk3, fid, junk4, off] = ncxmap['pos_fid'].split(':')
-                filename, idtag = k8proc.getIDTagByPosFid(fid, off)
-                ncxmap['filename'] = filename
-                ncxmap['idtag'] = idtag
-                ncx_data[i] = ncxmap
-
-            # write out the toc.ncx
-            ncx.writeK8NCX(ncx_data, metadata)
-
-            # convert the rawML to a set of xhtml files
-            print "Building an epub-like structure"
-            htmlproc = XHTMLK8Processor(imgnames, k8proc)
-            usedmap = htmlproc.buildXHTML()
-
-            # write out the files
-            filenames = []
-            n =  k8proc.getNumberOfParts()
-            for i in range(n):
-                part = k8proc.getPart(i)
-                [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
-                filenames.append([dir, filename])
-                fname = os.path.join(files.k8oebps,dir,filename)
-                open(pathof(fname),'wb').write(part)
-            n = k8proc.getNumberOfFlows()
-            for i in range(1, n):
-                [type, format, dir, filename] = k8proc.getFlowInfo(i)
-                flowpart = k8proc.getFlow(i)
-                if format == 'file':
-                    filenames.append([dir, filename])
-                    fname = os.path.join(files.k8oebps,dir,filename)
-                    open(pathof(fname),'wb').write(flowpart)
-
-            if PROC_K8RESC:
-                # Retrieve a spine (and a metadata) from RESC section.
-                # Get correspondences between itemes in a spine in RECS and ones in a skelton.
-                k8resc = K8RESCProcessor(resc)
-                n =  k8proc.getNumberOfParts()
-                if k8resc.spine == None: # make a spine if not able to retrieve from a RESC section.
-                    spine = [['<spine toc="ncx">', None, None, True, None]]
-                    for i in range(n):
-                        spine.append(['<itemref/>', i, 'skel{:d}'.format(i), False, None])
-                    spine.append(['</spine>', None, None, True, None])
-                    k8resc.spine = spine
-                    k8resc.createSkelidToSpineIndexDict()
-                for i in range(n):
-                    # Import skelnum and filename to K8RescProcessor.
-                    [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
-                    index = k8resc.getSpineIndexBySkelid(skelnum)
-                    k8resc.setFilenameToSpine(index, filename)
-                #k8resc.createFilenameToSpineIndexDict()
-
-                # XXX experimental
-                if CREATE_COVER_PAGE:
-                    cover = CoverProcessor(files, metadata, imgnames)
-                    # Create a cover page if first spine item has no correspondence.
-                    createCoverPage = False
-                    index = k8resc.getSpineStartIndex()
-                    if k8resc.getSpineSkelid(index) < 0:
-                        createCoverPage = True
-                    else:
-                        filename = k8resc.getFilenameFromSpine(index)
-                        if filename != None:
-                            fname = os.path.join(files.k8oebps, dir, filename)
-                            f = open(pathof(fname), 'r')
-                            if f != None:
-                                xhtml = f.read()
-                                f.close()
-                                cover_img = cover.getImageName()
-                                if cover_img != None and not cover_img in xhtml:
-                                    k8resc.insertSpine(index, 'inserted_cover', -1, None)
-                                    k8resc.createSkelidToSpineIndexDict()
-                                    createCoverPage = True
-                    if createCoverPage:
-                        cover.writeXHTML()
-                        filename = cover.getXHTMLName()
-                        dir = os.path.relpath(files.k8text, files.k8oebps)
-                        filenames.append([dir, filename])
-                        k8resc.setFilenameToSpine(index, filename)
-                        k8resc.setSpineAttribute(index, 'linear', 'no')
-                        guidetext += cover.guide_toxml()
-
-                k8resc.createFilenameToSpineIndexDict()
-                opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
-            else:
-                opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext)
-
-            if obfuscate_data:
-                uuid = opf.writeOPF(True)
-            else:
-                uuid = opf.writeOPF()
-
-            # make an epub-like structure of it all
-            files.makeEPUB(usedmap, obfuscate_data, uuid)
-
+        # Old Mobi (Mobi 7)
         elif not k8only:
-            # An original Mobi
-            # process the toc ncx
-            # ncx map keys: name, pos, len, noffs, text, hlvl, kind, pos_fid, parent, child1, childn, num
-            ncx = ncxExtract(mh, files)
-            ncx_data = ncx.parseNCX()
-            ncx.writeNCX(metadata)
+            processMobi7(mh, metadata, sect, files, imgnames)
 
-            positionMap = {}
-            # If Dictionary build up the positionMap
-            if mh.isDictionary():
-                if mh.DictInLanguage():
-                    metadata['DictInLanguage'] = mh.DictInLanguage()
-                if mh.DictOutLanguage():
-                    metadata['DictOutLanguage'] = mh.DictOutLanguage()
-                positionMap = dictSupport(mh, sect).getPositionMap()
+        # process any remaining unknown sections of the palm file
+        processUnknownSections(mh, sect, files, K8Boundary)
 
-            # convert the rawml back to Mobi ml
-            proc = HTMLProcessor(files, metadata, imgnames)
-            srctext = proc.findAnchors(rawML, ncx_data, positionMap)
-            srctext, usedmap = proc.insertHREFS()
-            filenames=[]
-
-            # write the proper mobi html
-            fname = files.getInputFileBasename() + '.html'
-            filenames.append(['', fname])
-            outhtml = os.path.join(files.mobi7dir, fname)
-            open(pathof(outhtml), 'wb').write(srctext)
-
-            # create an OPF
-            # extract guidetext from srctext
-            guidetext =''
-            pagemapxml = ''
-            guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
-            if guidematch:
-                replacetext = r'''href="'''+filenames[0][1]+r'''#filepos\1"'''
-                guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
-                guidetext += '\n'
-                if isinstance(guidetext, unicode):
-                    guidetext = guidetext.decode(mh.codec).encode("utf-8")
-                else:
-                    guidetext = unicode(guidetext, mh.codec).encode("utf-8")
-            opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext)
-            opf.writeOPF()
-
-        # process unknown sections between end of text and resources
-        if DUMP:
-            print "Unpacking any remaining unknown records"
-        beg = mh.start
-        end = sect.num_sections
-        if beg < K8Boundary:
-            # then we're processing the first part of a combination file
-            end = K8Boundary
-        for i in xrange(beg, end):
-            if sect.sectiondescriptions[i] == "":
-                data = sect.loadSection(i)
-                type = data[0:4]
-                if  type == TERMINATION_INDICATOR3:
-                    description = "Termination Marker 3 Nulls"
-                elif type == TERMINATION_INDICATOR2:
-                    description = "Termination Marker 2 Nulls"
-                elif type == "INDX":
-                    fname = "Unknown%05d_INDX.dat" % i
-                    description = "Unknown INDX section"
-                    if DUMP:
-                        outname= os.path.join(files.outdir, fname)
-                        open(pathof(outname), 'wb').write(data)
-                        print "Extracting %s: %s from section %d" % (description, fname, i)
-                        description = description + ", extracting as %s" % fname
-                else:
-                    fname = "unknown%05d.dat" % i
-                    description = "Mysterious Section, first four bytes %s" % describe(data[0:4])
-                    if DUMP:
-                        outname= os.path.join(files.outdir, fname)
-                        open(pathof(outname), 'wb').write(data)
-                        print "Extracting %s: %s from section %d" % (description, fname, i)
-                        description = description + ", extracting as %s" % fname
-                sect.setsectiondescription(i, description)
     return
 
 
-def unpackBook(infile, apnxfile, outdir, dodump=False, dowriteraw=False, dosplitcombos=False):
+def unpackBook(infile, outdir, apnxfile=None, dodump=False, dowriteraw=False, dosplitcombos=False):
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
@@ -1861,7 +887,9 @@ def unpackBook(infile, apnxfile, outdir, dodump=False, dowriteraw=False, dosplit
 
     if hasK8:
         files.makeK8Struct()
+
     process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, False)
+
     if DUMP:
         sect.dumpsectionsinfo()
     return
@@ -1887,9 +915,10 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.70 Experimental"
-    print "   Based on initial version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
-    print "   Extensions / Improvements Copyright © 2009-2014 P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
+    print "kindleunpack v0.71 Experimental"
+    print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
+    print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
+    print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
     print "   This program is free software: you can redistribute it and/or modify"
     print "   it under the terms of the GNU General Public License as published by"
     print "   the Free Software Foundation, version 3."
@@ -1936,7 +965,7 @@ def main():
 
     try:
         print 'Unpacking Book...'
-        unpackBook(infile, apnxfile, outdir)
+        unpackBook(infile, outdir, apnxfile)
         print 'Completed'
 
     except ValueError, e:

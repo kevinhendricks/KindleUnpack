@@ -21,7 +21,7 @@
 <p>If you would prefer a command-line interface, simply look inside KindleUnpack's "lib" folder for the KindleUnpack.py python program and its support modules.  You should then be able to run KindleUnpack.py by the following command:</p>
 
 <pre>
-python kindle_unpack.py [-r -s -d -h] INPUT_FILE OUTPUT_FOLDER
+python kindle_unpack.py [-r -s -d -h] [-p APNX_FILE] INPUT_FILE OUTPUT_FOLDER
 </pre>
 
 <p>where you replace:</p>
@@ -32,10 +32,14 @@ python kindle_unpack.py [-r -s -d -h] INPUT_FILE OUTPUT_FOLDER
    OUTPUT_FOLDER   - the path to folder where the ebook will be unpacked
 
 Options:
-    -r           write raw data to the output folder
-    -s           split combination mobis into older mobi and mobi KF8 ebooks
-    -d           dump headers and other debug info to output and extra files
-    -h           print this help message
+    -r              write raw data to the output folder
+    -s              split combination mobis into older mobi and mobi KF8 ebooks
+    -d              dump headers and other debug info to output and extra files
+    -h              print this help message
+
+   -p APNX_FILE     the path to an apnx file that contains real page numbers associated with an azw3 ebook
+                    Note: many apnx files have arbitrarily assigned page offsets that will confuse KindleUnpack if used
+
 </pre>
 
 <p>Please report any bugs or comments/requests our sticky forum on the Mobileread website.  It can be found at http://www.mobileread.com/forums.  Look under E-Book Formats > Mobi > New Kindle/Mobi Decoder: mobiunpack.py.
@@ -44,13 +48,12 @@ Options:
 <p>License Information</p>
 <pre>
 KindleUnpack
-   Based on initial version Copyright &copy; 2009 Charles M. Hannum root@ihack.net
-   Extensions / Improvements Copyright &copy; 2009-2012: P. Durrant, K.Hendricks,
-   S. Siebert, fandrieu, DiapDealer, nickredding, and bug fixes from many others.
-
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, version 3.
+    Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>
+    Extensive Extensions and Improvements Copyright © 2009-2014 
+         By P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo.
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, version 3.
 </pre>
 
 </body>

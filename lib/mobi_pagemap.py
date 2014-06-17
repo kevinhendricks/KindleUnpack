@@ -27,7 +27,7 @@ _pattern = r'''\(([^\)]*)\)'''
 _tup_pattern = re.compile(_pattern,re.IGNORECASE)
 
 
-def parseNames(numpages, data):
+def _parseNames(numpages, data):
     pagenames = []
     for i in range(numpages):
         pagenames.append(None)
@@ -65,11 +65,12 @@ class PageMapProcessor:
         self.mh = mh
         self.pagenames = []
         self.pageoffsets = []
+        print "Extracting Page Map Information"
         rev_len, = struct.unpack_from('>L', self.data, 0x10)
         # skip over header, revision string length data, and revision string
         ptr = 0x14 + rev_len 
         pm_1, pm_len, pm_nn, pm_bits  = struct.unpack_from('>4H', self.data, ptr)
-        print pm_1, pm_len, pm_nn, pm_bits
+        # print pm_1, pm_len, pm_nn, pm_bits
         pmstr = self.data[ptr+8:ptr+8+pm_len]
         pmoff = self.data[ptr+8+pm_len:]
         offsize = ">L"
@@ -82,7 +83,7 @@ class PageMapProcessor:
             od, = struct.unpack_from(offsize, pmoff, ptr)
             ptr += offwidth
             self.pageoffsets.append(od)
-        self.pagenames = parseNames(pm_nn, pmstr)
+        self.pagenames = _parseNames(pm_nn, pmstr)
 
     
     def getNames(self):
@@ -92,3 +93,19 @@ class PageMapProcessor:
         return self.pageoffsets
 
 
+    def generateKF8PageMapXML(self, k8proc):
+        pagemapxml = '<page-map xmlns="http://www.idpf.org/2007/opf">\n'
+        for i in xrange(len(self.pagenames)):
+            pos = self.pageoffsets[i]
+            name = self.pagenames[i]
+            if name != None and name != "":
+                [pn, dir, filename, skelpos, skelend, aidtext] = k8proc.getSkelInfo(pos)
+                idtext = k8proc.getPageIDTag(pos)
+                linktgt = filename
+                if idtext != '':
+                    linktgt += '#' + idtext
+                pagemapxml += '<page name="%s" href="%s/%s" />\n' % (name, dir, linktgt)
+        # page-map.xml is encoded utf-8 so must convert any text properly
+        pagemapxml += "</page-map>\n"
+        pagemapxml = unicode(pagemapxml, self.mh.codec).encode("utf-8")
+        return pagemapxml
