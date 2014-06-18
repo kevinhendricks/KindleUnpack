@@ -8,7 +8,7 @@ from HTMLParser import HTMLParser
 EXTRA_ENTITIES = {'"':'&quot;', "'":"&apos;"}
 
 class OPFProcessor:
-    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, pagemapxml, guidetext=False, k8resc=None):
+    def __init__(self, files, metadata, filenames, imgnames, isNCX, mh, usedmap, pagemapxml='', guidetext=False, k8resc=None):
         self.files = files
         self.metadata = metadata
         self.filenames = filenames

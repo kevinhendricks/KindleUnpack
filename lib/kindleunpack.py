@@ -92,6 +92,8 @@
 #  0.69 - preliminary support for CONT and CRES for HD Images
 #  0.70 - preliminary support for decoding apnx files when used with azw3 ebooks
 #  0.71 - extensive refactoring of kindleunpack.py to make it more manageable
+#  0.72 - many bug fixes from tkeo: fix pageProcessing, fix print replica, fix resc usage, fix font mangling, etc.
+#  0.72a- fix for still broken PrintReplica support
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -187,12 +189,12 @@ def processSRCS(i, files, imgnames, sect, data):
     return imgnames
 
 
-def processPAGE(i, files, imgnames, sect, data, pagemapproc):
+def processPAGE(i, files, imgnames, sect, data, mh, pagemapproc):
     # process the page map information so it can be further processed later
     pagemapproc = PageMapProcessor(mh, data)
     imgnames.append(None)
     sect.setsectiondescription(i,"PageMap")
-    return imagenames, pagemapproc
+    return imgnames, pagemapproc
 
 
 def processCMET(i, files, imgnames, sect, data):
@@ -206,7 +208,7 @@ def processCMET(i, files, imgnames, sect, data):
 
 
 # fonts only exist in KF8 ebooks
-# Format:  bytes  0 -  3:  'FONT'    
+# Format:  bytes  0 -  3:  'FONT'
 #          bytes  4 -  7:  uncompressed size
 #          bytes  8 - 11:  flags
 #              flag bit 0x0001 - zlib compression
@@ -304,14 +306,17 @@ def processCONT(i, files, imgnames, sect, data):
     if dt == "CONTBOUNDARY":
         imgnames.append(None)
         sect.setsectiondescription(i,"CONTAINER BOUNDARY")
-        return
-    sect.setsectiondescription(i,"CONT Header")
-    if DUMP:
-        cpage, = struct.unpack_from('>L', data, 12)
-        contexth = data[48:]
-        print "\n\nContainer EXTH Dump"
-        dump_contexth(cpage, contexth)
-    imgnames.append(None)
+    else:
+        sect.setsectiondescription(i,"CONT Header")
+        imgnames.append(None)
+        if DUMP:
+            cpage, = struct.unpack_from('>L', data, 12)
+            contexth = data[48:]
+            print "\n\nContainer EXTH Dump"
+            dump_contexth(cpage, contexth)
+            fname = "CONT_Header%05d.dat" % i
+            outname= os.path.join(files.outdir, fname)
+            open(pathof(outname), 'wb').write(data)
     return imgnames
 
 
@@ -488,7 +493,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
             linktgt += '#' + idtext
         guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
 
-    # if apnxfile is passed in use if for page map information 
+    # if apnxfile is passed in use it for page map information 
     if apnxfile != None and pagemapproc == None:
         apnxdata = "00000000" + file(apnxfile, 'rb').read()
         pagemapproc = PageMapProcessor(mh, apnxdata)
@@ -709,6 +714,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
     global WRITE_RAW_DATA
     imgnames = []
     resc = None
+    obfuscate_data = []
     for mh in mhlst:
         pagemapproc = None
         if mh.isK8():
@@ -737,9 +743,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
         if mh.isEncrypted():
             raise unpackException('Book is encrypted')
 
-        resc = None
         pagemapproc = None
-        obfuscate_data = []
 
         # first handle all of the different resource sections:  images, resources, fonts, and etc
         # build up a list of image names to use to postprocess the ebook
@@ -770,7 +774,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             elif type == "SRCS":
                 imgnames = processSRCS(i, files, imgnames, sect, data)
             elif type == "PAGE":
-                imgnames, pagemapproc = processPAGE(i, files, imgnames, sect, data, pagemapproc)
+                imgnames, pagemapproc = processPAGE(i, files, imgnames, sect, data, mh, pagemapproc)
             elif type == "CMET":
                 imgnames = processCMET(i, files, imgnames, sect, data)
             elif type == "FONT":
@@ -802,7 +806,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
 
         # Print Replica
         if mh.isPrintReplica() and not k8only:
-            createPrintReplica(metadata, files, imgnames, mh)
+            processPrintReplica(metadata, files, imgnames, mh)
             continue
 
         # KF8 (Mobi 8)
@@ -915,7 +919,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.71 Experimental"
+    print "kindleunpack v0.72a"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."

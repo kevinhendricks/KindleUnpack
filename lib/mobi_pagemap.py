@@ -61,8 +61,8 @@ def _parseNames(numpages, data):
 
 class PageMapProcessor:
     def __init__(self, mh, data):
-        self.data = data
         self.mh = mh
+        self.data = data
         self.pagenames = []
         self.pageoffsets = []
         print "Extracting Page Map Information"
