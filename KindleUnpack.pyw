@@ -244,6 +244,8 @@ class MainDialog(Tkinter.Frame):
         q = self.q
         log = 'Input Path = "'+ mobipath + '"\n'
         log += 'Output Path = "' + outdir + '"\n'
+        if apnxfile != None:
+            log += 'APNX Path = "' + apnxfile + '"\n'
         dump = False
         writeraw = False
         splitcombos = False

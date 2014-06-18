@@ -11,6 +11,7 @@ import struct, zlib, zipfile
 import re, binascii
 import path
 from path import pathof
+from mobi_utils import mangle_fonts
 
 class unpackException(Exception):
     pass
