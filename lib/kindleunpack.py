@@ -94,6 +94,7 @@
 #  0.71 - extensive refactoring of kindleunpack.py to make it more manageable
 #  0.72 - many bug fixes from tkeo: fix pageProcessing, fix print replica, fix resc usage, fix font mangling, etc.
 #  0.72a- fix for still broken PrintReplica support
+#  0.72b- preview for primary epub3 support. A parameter epubver(default='2') is added to process_all_mobi_headers(), unpackBook().
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -103,9 +104,6 @@ WRITE_RAW_DATA = False
 
 SPLIT_COMBO_MOBIS = False
 """ Set to True to split combination mobis into mobi7 and mobi8 pieces. """
-
-PROC_K8RESC = True
-""" Process K8 RESC section. """
 
 CREATE_COVER_PAGE = True # XXX experimental
 """ Create and insert a cover xhtml page. """
@@ -155,28 +153,11 @@ from mobi_html import HTMLProcessor, XHTMLK8Processor
 from mobi_ncx import ncxExtract
 from mobi_k8proc import K8Processor
 from mobi_split import mobi_split
-from mobi_k8resc import K8RESCProcessor, CoverProcessor
+from mobi_k8resc import K8RESCProcessor
+from mobi_nav import NAVProcessor
+from mobi_cover import CoverProcessor
 from mobi_pagemap import PageMapProcessor
 from mobi_dict import dictSupport
-
-
-def renameCoverImage(metadata, files, imgnames):
-    global CREATE_COVER_PAGE
-    if CREATE_COVER_PAGE:
-        if 'CoverOffset' in metadata.keys():
-            i = int(metadata['CoverOffset'][0])
-            if imgnames[i] != None:
-                old_name = imgnames[i]
-                if not 'cover' in old_name:
-                    new_name = re.sub(r'image', 'cover', old_name)
-                    imgnames[i] = new_name
-                    oldimg = os.path.join(files.imgdir, old_name)
-                    newimg = os.path.join(files.imgdir, new_name)
-                    if os.path.exists(pathof(oldimg)):
-                        if os.path.exists(pathof(newimg)):
-                            os.remove(pathof(newimg))
-                        os.rename(pathof(oldimg), pathof(newimg))
-    return imgnames
 
 
 def processSRCS(i, files, imgnames, sect, data):
@@ -220,7 +201,7 @@ def processFONT(i, files, imgnames, sect, data, obfuscate_data):
     fontname = "font%05d" % i
     ext = '.dat'
     font_error = False
-    font_data = data 
+    font_data = data
     try:
         usize, fflags, dstart, xor_len, xor_start = struct.unpack_from('>LLLLL',data,4)
     except:
@@ -260,7 +241,7 @@ def processFONT(i, files, imgnames, sect, data, obfuscate_data):
     return imgnames, obfuscate_data
 
 
-def processCRES(i, files, imgnames, sect, data):
+def processCRES(i, files, imgnames, sect, data, cover_index=-1):
     # extract an HDImage
     global DUMP
     data = data[12:]
@@ -289,6 +270,8 @@ def processCRES(i, files, imgnames, sect, data):
             sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
     else:
         imgname = "HDimage%05d.%s" % (i, imgtype)
+        if i == cover_index:
+            imgname = "HDcover%05d.%s" % (i, imgtype)
         print "Extracting HD image: {0:s} from section {1:d}".format(imgname,i)
         outimg = os.path.join(files.hdimgdir, imgname)
         open(pathof(outimg), 'wb').write(data)
@@ -298,7 +281,7 @@ def processCRES(i, files, imgnames, sect, data):
     return imgnames
 
 
-def processCONT(i, files, imgnames, sect, data):
+def processCONT(i, files, imgnames, sect, data, begCONT=-1):
     global DUMP
     # process a container header, most of this is unknown
     # right now only extract its EXTH
@@ -317,7 +300,9 @@ def processCONT(i, files, imgnames, sect, data):
             fname = "CONT_Header%05d.dat" % i
             outname= os.path.join(files.outdir, fname)
             open(pathof(outname), 'wb').write(data)
-    return imgnames
+        if begCONT < 0:
+            begCONT = i + 1
+    return imgnames, begCONT
 
 
 def processkind(i, files, imgnames, sect, data):
@@ -380,7 +365,7 @@ def processRESC(i, files, imgnames, sect, data, resc):
     return imgnames, resc
 
 
-def processImage(i, files, imgnames, sect, data):
+def processImage(i, files, imgnames, sect, data, cover_index=-1):
     global DUMP
     # Extract an Image
 
@@ -410,6 +395,8 @@ def processImage(i, files, imgnames, sect, data):
             sect.setsectiondescription(i,"Mysterious Section, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
     else:
         imgname = "image%05d.%s" % (i, imgtype)
+        if i == cover_index:
+            imgname = "cover%05d.%s" % (i, imgtype)
         print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
         outimg = os.path.join(files.imgdir, imgname)
         open(pathof(outimg), 'wb').write(data)
@@ -457,7 +444,7 @@ def processPrintReplica(metadata, files, imgnames, mh):
 
 
 
-def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile=None):
+def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile=None, epubver='2'):
     global DUMP
     global WRITE_RAW_DATA
 
@@ -493,7 +480,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
             linktgt += '#' + idtext
         guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
 
-    # if apnxfile is passed in use it for page map information 
+    # if apnxfile is passed in use it for page map information
     if apnxfile != None and pagemapproc == None:
         apnxdata = "00000000" + file(apnxfile, 'rb').read()
         pagemapproc = PageMapProcessor(mh, apnxdata)
@@ -548,66 +535,55 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
             fname = os.path.join(files.k8oebps,dir,filename)
             open(pathof(fname),'wb').write(flowpart)
 
-    k8resc = None
 
-    # ****FIXME****:  pass k8proc into mobi_k8resc routines and offload most of the work done here to mobi_k8resc
+    # XXX: offloaded most of the work done here to mobi_k8resc.
     # process RESC spine information
+    try:
+        # Retrieve a spine and a metadata from RESC section.
+        k8resc = K8RESCProcessor(resc, k8proc)
+    except:
+        k8resc = None
 
-    if PROC_K8RESC:
-        # Retrieve a spine (and a metadata) from RESC section.
-        # Get correspondences between itemes in a spine in RECS and ones in a skelton.
-        k8resc = K8RESCProcessor(resc)
-        n =  k8proc.getNumberOfParts()
-        if k8resc.spine == None: # make a spine if not able to retrieve from a RESC section.
-            spine = [['<spine toc="ncx">', None, None, True, None]]
-            for i in range(n):
-                spine.append(['<itemref/>', i, 'skel{:d}'.format(i), False, None])
-            spine.append(['</spine>', None, None, True, None])
-            k8resc.spine = spine
-            k8resc.createSkelidToSpineIndexDict()
-        for i in range(n):
-            # Import skelnum and filename to K8RescProcessor.
-            [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
-            index = k8resc.getSpineIndexBySkelid(skelnum)
-            k8resc.setFilenameToSpine(index, filename)
-
-        if CREATE_COVER_PAGE:
-            cover = CoverProcessor(files, metadata, imgnames)
-            # Create a cover page if first spine item has no correspondence.
+    if k8resc != None and CREATE_COVER_PAGE:
+        # Create a cover page if not exist.
+        cover = CoverProcessor(files, metadata, imgnames)
+        cover_img = cover.getImageName()
+        if cover_img != None:
             createCoverPage = False
-            index = k8resc.getSpineStartIndex()
-            if k8resc.getSpineSkelid(index) < 0:
+            cover_page = cover.getXHTMLName()
+            first_itemref_index = k8resc.spine.getStartIndex()
+            if not k8resc.spine.isLinkToPart(first_itemref_index):
+                # Create a cover page if first spine item has no correspondence.
                 createCoverPage = True
             else:
-                filename = k8resc.getFilenameFromSpine(index)
-                if filename != None:
-                    fname = os.path.join(files.k8oebps, dir, filename)
-                    f = open(pathof(fname), 'r')
-                    if f != None:
-                        xhtml = f.read()
-                        f.close()
-                        cover_img = cover.getImageName()
-                        if cover_img != None and not cover_img in xhtml:
-                            k8resc.insertSpine(index, 'inserted_cover', -1, None)
-                            k8resc.createSkelidToSpineIndexDict()
-                            createCoverPage = True
-            if createCoverPage:
-                cover.writeXHTML()
-                filename = cover.getXHTMLName()
-                dir = os.path.relpath(files.k8text, files.k8oebps)
-                filenames.append([dir, filename])
-                k8resc.setFilenameToSpine(index, filename)
-                k8resc.setSpineAttribute(index, 'linear', 'no')
-                guidetext += cover.guide_toxml()
+                # Insert a cover page if first spine item does not use the cover image.
+                partno = k8resc.spine.getPartno(first_itemref_index)
+                if partno >= 0 and partno < k8proc.getNumberOfParts():
+                    part = k8proc.getPart(partno)
+                else:
+                    part = ''
+                if not cover_img in part:
+                    k8resc.spine.insert(first_itemref_index, 'inserted_cover')
+                    createCoverPage = True
 
-        k8resc.createFilenameToSpineIndexDict()
+            if createCoverPage:
+                k8resc.spine.setFilename(first_itemref_index, cover_page)
+                k8resc.spine.setAttribute(first_itemref_index, 'linear', 'no')
+
+                guidetext += cover.guide_toxml()
+                filename = cover.getXHTMLName()
+                filenames.append(['Text', filename])
+                cover.writeXHTML()
+
 
     # create the opf
     opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
-    if obfuscate_data:
-        uuid = opf.writeOPF(True)
-    else:
-        uuid = opf.writeOPF()
+    uuid = opf.writeK8OPF(bool(obfuscate_data), epubver)
+
+    if opf.hasNAV():
+        # Create a navigation document.
+        nav = NAVProcessor(files, metadata)
+        nav.writeNAV(ncx_data, guidetext)
 
     # make an epub-like structure of it all
     files.makeEPUB(usedmap, obfuscate_data, uuid)
@@ -709,7 +685,7 @@ def processUnknownSections(mh, sect, files, K8Boundary):
             sect.setsectiondescription(i, description)
 
 
-def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False):
+def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False, epubver='2'):
     global DUMP
     global WRITE_RAW_DATA
     imgnames = []
@@ -755,6 +731,10 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             # processing first part of a combination file
             end = K8Boundary
 
+        cover_offset = int(metadata.get('CoverOffset', ['-1'])[0])
+        if not CREATE_COVER_PAGE:
+            cover_offset = -1
+        begCONT = -1
         for i in xrange(beg, end):
             data = sect.loadSection(i)
             type = data[0:4]
@@ -780,12 +760,12 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             elif type == "FONT":
                 imgnames, obfuscate_data = processFONT(i, files, imgnames, sect, data, obfuscate_data)
             elif type == "CRES":
-                imgnames = processCRES(i, files, imgnames, sect, data)
+                imgnames = processCRES(i, files, imgnames, sect, data, begCONT + cover_offset)
             elif type == "CONT":
-                imgnames = processCONT(i, files, imgnames, sect, data)
+                imgnames, begCONT = processCONT(i, files, imgnames, sect, data, begCONT)
             elif type == "kind":
                 imgnames = processkind(i, files, imgnames, sect, data)
-            elif type == chr(0xa0) + chr(0xa0) + chr(0xa0) + chr(0xa0): 
+            elif type == chr(0xa0) + chr(0xa0) + chr(0xa0) + chr(0xa0):
                 sect.setsectiondescription(i,"Empty_HD_Image/Resource_Placeholder")
                 imgnames.append(None)
             elif type == "RESC":
@@ -798,11 +778,11 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                 imgnames.append(None)
             else:
                 # if reached here should be an image ow treat as unknown
-                imgnames = processImage(i, files, imgnames, sect, data)
+                imgnames = processImage(i, files, imgnames, sect, data, beg + cover_offset)
 
         # done unpacking resources
         # rename cover image to 'coverXXXXX.ext'
-        imgnames = renameCoverImage(metadata, files, imgnames)
+        #imgnames = renameCoverImage(metadata, files, imgnames)
 
         # Print Replica
         if mh.isPrintReplica() and not k8only:
@@ -811,7 +791,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
 
         # KF8 (Mobi 8)
         if mh.isK8():
-            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile)
+            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile, epubver)
 
         # Old Mobi (Mobi 7)
         elif not k8only:
@@ -823,7 +803,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
     return
 
 
-def unpackBook(infile, outdir, apnxfile=None, dodump=False, dowriteraw=False, dosplitcombos=False):
+def unpackBook(infile, outdir, apnxfile=None, epubver='2', dodump=False, dowriteraw=False, dosplitcombos=False):
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
@@ -892,7 +872,7 @@ def unpackBook(infile, outdir, apnxfile=None, dodump=False, dowriteraw=False, do
     if hasK8:
         files.makeK8Struct()
 
-    process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, False)
+    process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, False, epubver)
 
     if DUMP:
         sect.dumpsectionsinfo()
@@ -906,20 +886,21 @@ def usage(progname):
     print "  or an unencrypted Kindle/Print Replica ebook to PDF and images"
     print "  into the specified output folder."
     print "Usage:"
-    print "  %s -r -s -p apnxfile -d -h infile [outdir]" % progname
+    print "  %s -r -s -p apnxfile -d -h --epub_version= infile [outdir]" % progname
     print "Options:"
     print "    -r              write raw data to the output folder"
     print "    -s              split combination mobis into mobi7 and mobi8 ebooks"
     print "    -d              dump headers and other info to output and extra files"
     print "    -h              print this help message"
     print "    -p   apnxfile   apnx file associated with an azw3 infile"
+    print "    --epub_version= set epub version. 2:epub2, 3:epub3, A:define automatically"
 
 
 def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72a"
+    print "kindleunpack v0.72b preview for epub3 support"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
@@ -930,7 +911,7 @@ def main():
     argv=utf8_argv()
     progname = os.path.basename(argv[0])
     try:
-        opts, args = getopt.getopt(argv[1:], "hdrsp:")
+        opts, args = getopt.getopt(argv[1:], "hdrsp:", ['epub_version='])
     except getopt.GetoptError, err:
         print str(err)
         usage(progname)
@@ -941,6 +922,7 @@ def main():
         sys.exit(2)
 
     apnxfile = None
+    epubver = '2'
 
     for o, a in opts:
         if o == "-d":
@@ -954,6 +936,8 @@ def main():
         if o == "-h":
             usage(progname)
             sys.exit(0)
+        if o == "--epub_version":
+            epubver = a
 
     if len(args) > 1:
         infile, outdir = args
@@ -969,7 +953,7 @@ def main():
 
     try:
         print 'Unpacking Book...'
-        unpackBook(infile, outdir, apnxfile)
+        unpackBook(infile, outdir, apnxfile, epubver)
         print 'Completed'
 
     except ValueError, e:
