@@ -7,7 +7,7 @@ import os
 
 import codecs
 import struct, re
-
+import uuid
 
 # import the mobiunpack support libraries
 from mobi_utils import getLanguage 
@@ -72,7 +72,7 @@ def dump_contexth(cpage, extheader):
            132 : 'RegionMagnification_(132)',
            200 : 'DictShortName_(200)',
            208 : 'Watermark_(208)',
-           501 : 'CDE_Type_(501)',
+           501 : 'cdeType_(501)',
            502 : 'last_update_time_(502)',
            503 : 'Updated_Title_(503)',
            504 : 'ASIN_(504)',
@@ -362,7 +362,7 @@ class MobiHeader:
         132 : 'RegionMagnification',
         200 : 'DictShortName',
         208 : 'Watermark',
-        501 : 'Document Type',
+        501 : 'cdeType',
         502 : 'last_update_time',
         503 : 'Updated_Title',
         504 : 'ASIN_(504)',
@@ -376,8 +376,8 @@ class MobiHeader:
         529 : 'Original_Source_Description_(529)',
         534 : 'Unknown_(534)',
         535 : 'Kindlegen_BuildRev_Number',
-        534 : 'Unknown_(536)',
-
+        536 : 'Unknown_(536)',
+        542 : 'Unknown_(542)'
     }
     id_map_values = {
         115 : 'sample',
@@ -495,6 +495,9 @@ class MobiHeader:
             self.exth_length, = struct.unpack_from('>L', self.header, self.exth_offset+4)
             self.exth_length = ((self.exth_length + 3)>>2)<<2 # round to next 4 byte boundary
             self.exth = self.header[self.exth_offset:self.exth_offset+self.exth_length]
+
+        # parse the exth / metadata
+        self.parseMetaData()
 
         # self.mlstart = self.sect.loadSection(self.start+1)
         # self.mlstart = self.mlstart[0:4]
@@ -775,7 +778,7 @@ class MobiHeader:
         return rawML
 
 
-    def getMetaData(self):
+    def parseMetaData(self):
         def addValue(name, value):
             if name not in self.metadata:
                 self.metadata[name] = [value]
@@ -820,7 +823,14 @@ class MobiHeader:
         self.metadata['Title'] = [unicode(self.title, self.codec).encode("utf-8")]
         self.metadata['Codec'] = [self.codec]
         self.metadata['UniqueID'] = [str(self.unique_id)]
+        # if no asin create one using a uuid
+        if 'ASIN' not in self.metadata.keys():
+            self.metadata['ASIN'] = [str(uuid.uuid4())]
+        # if no cdeType set it to "EBOK"
+        if 'cdeType' not in self.metadata.keys():
+            self.metadata['cdeType'] = ['EBOK']
 
+    def getMetaData(self):
         return self.metadata
 
 

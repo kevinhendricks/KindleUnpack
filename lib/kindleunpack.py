@@ -95,6 +95,8 @@
 #  0.72 - many bug fixes from tkeo: fix pageProcessing, fix print replica, fix resc usage, fix font mangling, etc.
 #  0.72a- fix for still broken PrintReplica support
 #  0.72b- preview for primary epub3 support. A parameter epubver(default='2') is added to process_all_mobi_headers(), unpackBook().
+#  0.72c- preview for apnx page support
+#  0.72d- more bugs fixed in preview features, much improved GUI with ability to dynaically grow the Log Window with preference support
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -127,7 +129,6 @@ K8_BOUNDARY = "BOUNDARY"
 
 import sys
 import os
-
 import locale
 import codecs
 
@@ -138,6 +139,7 @@ from path import pathof
 
 import array, struct, re, imghdr, zlib, zipfile, datetime
 import getopt, binascii
+import uuid
 
 class unpackException(Exception):
     pass
@@ -171,10 +173,26 @@ def processSRCS(i, files, imgnames, sect, data):
 
 
 def processPAGE(i, files, imgnames, sect, data, mh, pagemapproc):
-    # process the page map information so it can be further processed later
+    # process any page map information and create an apnx file
     pagemapproc = PageMapProcessor(mh, data)
     imgnames.append(None)
     sect.setsectiondescription(i,"PageMap")
+    apnx_meta = {}
+    apnx_meta['acr'] = str(sect.palmname).rstrip('\x00')
+    apnx_meta['cdeType'] = mh.metadata['cdeType'][0]
+    apnx_meta['contentGuid'] = hex(int(mh.metadata['UniqueID'][0]))[2:]
+    apnx_meta['asin'] = mh.metadata['ASIN'][0]
+    apnx_meta['pageMap'] = pagemapproc.getPageMap()
+    if mh.version == 8:
+        apnx_meta['format'] = 'MOBI_8'
+    else:
+        apnx_meta['format'] = 'MOBI_7'
+    apnx_data = pagemapproc.generateAPNX(apnx_meta)
+    if mh.isK8():
+        outname = os.path.join(files.outdir, 'mobi8-'+files.getInputFileBasename() + '.apnx')
+    else:
+        outname = os.path.join(files.outdir, 'mobi7-'+files.getInputFileBasename() + '.apnx')
+    open(pathof(outname), 'wb').write(apnx_data)
     return imgnames, pagemapproc
 
 
@@ -900,7 +918,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72b preview for epub3 support"
+    print "kindleunpack v0.72d preview with epub3 and APNX support"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."

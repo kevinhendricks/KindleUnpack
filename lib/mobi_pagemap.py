@@ -29,10 +29,14 @@ _tup_pattern = re.compile(_pattern,re.IGNORECASE)
 
 def _parseNames(numpages, data):
     pagenames = []
+    pageMap = ''
     for i in range(numpages):
         pagenames.append(None)
     for m in re.finditer(_tup_pattern, data):
         tup = m.group(1)
+        if pageMap != '':
+            pageMap += ','
+        pageMap += '(' + tup + ')'
         spos, nametype, svalue = tup.split(",")
         # print spos, nametype, svalue
         if nametype == 'a' or  nametype == 'r':
@@ -55,7 +59,7 @@ def _parseNames(numpages, data):
             else:
                 print "Error: unknown page numbering type", nametype
             pagenames[i] = pname
-    return pagenames
+    return pagenames, pageMap
 
 
 
@@ -65,27 +69,36 @@ class PageMapProcessor:
         self.data = data
         self.pagenames = []
         self.pageoffsets = []
+        self.pageMap = ''
+        self.pm_len = 0
+        self.pm_nn = 0
+        self.pn_bits = 0
+        self.pmoff = None
+        self.pmstr = ''
         print "Extracting Page Map Information"
         rev_len, = struct.unpack_from('>L', self.data, 0x10)
         # skip over header, revision string length data, and revision string
         ptr = 0x14 + rev_len 
-        pm_1, pm_len, pm_nn, pm_bits  = struct.unpack_from('>4H', self.data, ptr)
-        # print pm_1, pm_len, pm_nn, pm_bits
-        pmstr = self.data[ptr+8:ptr+8+pm_len]
-        pmoff = self.data[ptr+8+pm_len:]
+        pm_1, self.pm_len, self.pm_nn, self.pm_bits  = struct.unpack_from('>4H', self.data, ptr)
+        # print pm_1, self.pm_len, self.pm_nn, self.pm_bits
+        self.pmstr = self.data[ptr+8:ptr+8+self.pm_len]
+        self.pmoff = self.data[ptr+8+self.pm_len:]
         offsize = ">L"
         offwidth = 4
-        if pm_bits == 16:
+        if self.pm_bits == 16:
             offsize = ">H"
             offwidth = 2
         ptr = 0
-        for i in range(pm_nn):
-            od, = struct.unpack_from(offsize, pmoff, ptr)
+        for i in range(self.pm_nn):
+            od, = struct.unpack_from(offsize, self.pmoff, ptr)
             ptr += offwidth
             self.pageoffsets.append(od)
-        self.pagenames = _parseNames(pm_nn, pmstr)
+        self.pagenames, self.pageMap = _parseNames(self.pm_nn, self.pmstr)
+        
 
-    
+    def getPageMap(self):
+        return self.pageMap
+
     def getNames(self):
         return self.pagenames
 
@@ -109,3 +122,23 @@ class PageMapProcessor:
         pagemapxml += "</page-map>\n"
         pagemapxml = unicode(pagemapxml, self.mh.codec).encode("utf-8")
         return pagemapxml
+
+
+    def generateAPNX(self, apnx_meta):
+        if apnx_meta['format'] == 'MOBI_8':
+            content_header = '{"contentGuid":"%(contentGuid)s","asin":"%(asin)s","cdeType":"%(cdeType)s","format":"%(format)s","fileRevisionId":"1","acr":"%(acr)s"}' %apnx_meta
+        else:
+            content_header = '{"contentGuid":"%(contentGuid)s","asin":"%(asin)s","cdeType":"%(cdeType)s","fileRevisionId":"1"}' % apnx_meta
+        page_header = '{"asin":"%(asin)s","pageMap":"%(pageMap)s"}' % apnx_meta
+        apnx = struct.pack('>H',1) + struct.pack('>H',1)
+        apnx += struct.pack('>I', 12 + len(content_header))
+        apnx += struct.pack('>I', len(content_header))
+        apnx += content_header
+        apnx += struct.pack('>H', 1)
+        apnx += struct.pack('>H', len(page_header))
+        apnx += struct.pack('>H', self.pm_nn)
+        apnx += struct.pack('>H', 32)
+        apnx += page_header
+        for page in self.pageoffsets:
+            apnx += struct.pack('>L', page)
+        return apnx
