@@ -16,7 +16,7 @@ DEFAULT_TITLE = 'Cover'
 MAX_WIDTH = 4096
 """ The max width for the svg cover page. """
 
-MAX_HIEGHT = 4096
+MAX_HEIGHT = 4096
 """ The max height for the svg cover page. """
 
 
@@ -55,7 +55,7 @@ def get_image_size(imgname, imgdata=None):
     Determine the image type of fhandle and return its size.
     from draco'''
     if imgdata == None:
-        fhandle = open(imgname, 'rb')
+        fhandle = open(pathof(imgname), 'rb')
         head = fhandle.read(24)
     else:
         head = imgdata[0:24]
@@ -122,8 +122,10 @@ class CoverProcessor(object):
         self.metadata = metadata
         self.imgnames = imgnames
         self.cover_page = COVER_PAGE_FINENAME
-        self.use_svg = USE_SVG_WRAPPER # Use svg wrapper.
+        self.use_svg = USE_SVG_WRAPPER
         self.lang = metadata.get('Language', ['en'])[0]
+        self.width = -1
+        self.height = -1
         if FORCE_DEFAULT_TITLE:
             self.title = DEFAULT_TITLE
         else:
@@ -143,14 +145,14 @@ class CoverProcessor(object):
             try:
                 if imgdata == None:
                     fname = os.path.join(files.imgdir, self.cover_image)
-                    [self.width, self.height] = get_image_size(fname)
+                    self.width, self.height = get_image_size(fname)
                 else:
-                    [self.width, self.height] = get_image_size(None, imgdata)
+                    self.width, self.height = get_image_size(None, imgdata)
             except:
                 self.use_svg = False
             width = self.width
             height = self.height
-            if width < 0 or height < 0 or width > MAX_WIDTH or height > MAX_HIEGHT:
+            if width < 0 or height < 0 or width > MAX_WIDTH or height > MAX_HEIGHT:
                 self.use_svg = False
         return
 

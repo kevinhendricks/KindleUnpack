@@ -21,6 +21,24 @@ from multiprocessing import Process, Queue
 
 import kindleunpack
 
+# Set to false to NOT save prefences to an ini file.
+# Starting directories for file dialogs will still persist
+# for the current KindleUnpack session.
+#
+# Need to delete the ini file after setting to false, of course.
+PERSISTENT_PREFS = True
+
+from inspect import getfile, currentframe
+from prefs import getprefs, saveprefs
+
+# Probably overkill, but to ensure cross-platform success no matter how the script is called/run...
+SCRIPT_NAME = utf8_str(getfile(currentframe()))
+SCRIPT_DIR = utf8_str(os.path.dirname(os.path.abspath(getfile(currentframe()))))
+PROGNAME = utf8_str(os.path.splitext(SCRIPT_NAME)[0])
+# Include platform in the ini file name. That way, settings can still persist
+# in the event that different OSs access the same script via a network share/flash-drive.
+CONFIGFILE = utf8_str(os.path.join(SCRIPT_DIR, '{0}_{1}.ini'.format(PROGNAME, sys.platform[:3])))
+
 # Wrap a stream so that output gets appended to shared queue
 # using utf-8 encoding
 class QueuedStream:
@@ -48,6 +66,7 @@ import Tkinter
 import Tkconstants
 import tkFileDialog
 import tkMessageBox
+import tkFont
 
 from scrolltextwidget import ScrolledText
 
@@ -58,64 +77,86 @@ class MainDialog(Tkinter.Frame):
         self.interval = 50
         self.p2 = None
         self.q = Queue()
-        self.status = Tkinter.Label(self, text='Upack a non-DRM Kindle eBook')
-        self.status.pack(fill=Tkconstants.X, expand=1)
-        body = Tkinter.Frame(self)
-        body.pack(fill=Tkconstants.X, expand=1)
+        # To keep things simple for possible future preference additions/deletions:
+        # Try to stick to - TK Widget name = prefs dictionary key = ini.get|set name.
+        # EX: mobipath = prefs['mobipath'] = config.get('Defaults', mobipath).
+        self.prefs = getprefs(CONFIGFILE, self.root, PERSISTENT_PREFS)
+
+        self.status = Tkinter.StringVar()
+        Tkinter.Label(self, textvariable=self.status, justify='center').grid(row=0, columnspan=3, sticky=Tkconstants.N)
+        self.status.set('Upack a non-DRM Kindle eBook')
         sticky = Tkconstants.E + Tkconstants.W
-        body.grid_columnconfigure(1, weight=2)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(8, weight=1)
 
-        Tkinter.Label(body, text='Unencrypted Kindle eBook input file').grid(row=0, sticky=Tkconstants.E)
-        self.mobipath = Tkinter.Entry(body, width=50)
-        self.mobipath.grid(row=0, column=1, sticky=sticky)
+        Tkinter.Label(self, text='').grid(row=1, sticky=Tkconstants.E)
+        Tkinter.Label(self, text='Unencrypted Kindle eBook input file', wraplength=200).grid(row=2, sticky=Tkconstants.E)
+        self.mobipath = Tkinter.Entry(self, width=50)
+        self.mobipath.grid(row=2, column=1, sticky=sticky)
         self.mobipath.insert(0, '')
-        button = Tkinter.Button(body, text="Browse...", command=self.get_mobipath)
-        button.grid(row=0, column=2)
+        button = Tkinter.Button(self, text="Browse...", command=self.get_mobipath)
+        button.grid(row=2, column=2, sticky=sticky)
 
-        Tkinter.Label(body, text='Output Directory').grid(row=1, sticky=Tkconstants.E)
-        self.outpath = Tkinter.Entry(body, width=50)
-        self.outpath.grid(row=1, column=1, sticky=sticky)
-        self.outpath.insert(0, '')
-        button = Tkinter.Button(body, text="Browse...", command=self.get_outpath)
-        button.grid(row=1, column=2)
+        Tkinter.Label(self, text='Output Directory', wraplength=200).grid(row=3, sticky=Tkconstants.E)
+        self.outpath = Tkinter.Entry(self, width=50)
+        self.outpath.grid(row=3, column=1, sticky=sticky)
+        if self.prefs['outpath'] and PERSISTENT_PREFS and os.path.exists(CONFIGFILE):
+            outpath = os.path.normpath(self.prefs['outpath'])
+            outpath = utf8_str(outpath)
+            self.outpath.insert(0, outpath)
+        else:
+            self.outpath.insert(0, '')
+        button = Tkinter.Button(self, text="Browse...", command=self.get_outpath)
+        button.grid(row=3, column=2, sticky=sticky)
 
-        Tkinter.Label(body, text='OPTIONAL: APNX file Associated with AZW3').grid(row=2, sticky=Tkconstants.E)
-        self.apnxpath = Tkinter.Entry(body, width=50)
-        self.apnxpath.grid(row=2, column=1, sticky=sticky)
+        Tkinter.Label(self, text='OPTIONAL: APNX file Associated with AZW3', wraplength=200).grid(row=4, sticky=Tkconstants.E)
+        self.apnxpath = Tkinter.Entry(self, width=50)
+        self.apnxpath.grid(row=4, column=1, sticky=sticky)
         self.apnxpath.insert(0, '')
-        button = Tkinter.Button(body, text="Browse...", command=self.get_apnxpath)
-        button.grid(row=2, column=2)
+        button = Tkinter.Button(self, text="Browse...", command=self.get_apnxpath)
+        button.grid(row=4, column=2, sticky=sticky)
 
-        Tkinter.Label(body, text='').grid(row=3, sticky=Tkconstants.E)
         self.splitvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Split Combination KF8 Kindle eBooks", variable=self.splitvar)
-        checkbox.grid(row=3, column=1, sticky=Tkconstants.W)
+        checkbox = Tkinter.Checkbutton(self, text="Split Combination Kindlegen eBooks", variable=self.splitvar)
+        if self.prefs['splitvar'] and PERSISTENT_PREFS:
+            checkbox.select()
+        checkbox.grid(row=5, column=1, columnspan=2, sticky=Tkconstants.W)
 
-        Tkinter.Label(body, text='').grid(row=4, sticky=Tkconstants.E)
         self.rawvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Write Raw Data", variable=self.rawvar)
-        checkbox.grid(row=4, column=1, sticky=Tkconstants.W)
+        checkbox = Tkinter.Checkbutton(self, text="Write Raw Data", variable=self.rawvar)
+        if self.prefs['rawvar'] and PERSISTENT_PREFS:
+            checkbox.select()
+        checkbox.grid(row=6, column=1, columnspan=2, sticky=Tkconstants.W)
 
-        Tkinter.Label(body, text='').grid(row=5, sticky=Tkconstants.E)
         self.dbgvar = Tkinter.IntVar()
-        checkbox = Tkinter.Checkbutton(body, text="Dump Mode", variable=self.dbgvar)
-        checkbox.grid(row=5, column=1, sticky=Tkconstants.W)
+        checkbox = Tkinter.Checkbutton(self, text="Dump Mode", variable=self.dbgvar)
+        if self.prefs['dbgvar'] and PERSISTENT_PREFS:
+            checkbox.select()
+        checkbox.grid(row=7, column=1, columnspan=2, sticky=Tkconstants.W)
 
         msg1 = 'Conversion Log \n\n'
-        self.stext = ScrolledText(body, bd=5, relief=Tkconstants.RIDGE, height=30, width=60, wrap=Tkconstants.WORD)
-        self.stext.grid(row=6, column=0, columnspan=2,sticky=sticky)
+        self.stext = ScrolledText(self, bd=5, relief=Tkconstants.RIDGE, wrap=Tkconstants.WORD)
+        self.stext.grid(row=8, rowspan=3, column=0, columnspan=3, sticky=Tkconstants.E+Tkconstants.W+Tkconstants.N+Tkconstants.S)
+        # self.stext.grid(row=8, rowspan=3, column=0, columnspan=3, sticky=Tkconstants.E+Tkconstants.W+Tkconstants.N+Tkconstants.S)
         self.stext.insert(Tkconstants.END,msg1)
 
-        buttons = Tkinter.Frame(self)
-        buttons.pack()
         self.sbotton = Tkinter.Button(
-            buttons, text="Start", width=10, command=self.convertit)
-        self.sbotton.pack(side=Tkconstants.LEFT)
-
-        Tkinter.Frame(buttons, width=10).pack(side=Tkconstants.LEFT)
+            self, text="Start", width=10, command=self.convertit)
+        self.sbotton.grid(row=11, column=1, sticky=Tkconstants.S+Tkconstants.E)
         self.qbutton = Tkinter.Button(
-            buttons, text="Quit", width=10, command=self.quitting)
-        self.qbutton.pack(side=Tkconstants.RIGHT)
+            self, text="Quit", width=10, command=self.quitting)
+        self.qbutton.grid(row=11, column=2, sticky=Tkconstants.S+Tkconstants.W)
+        if self.prefs['windowgeometry'] and PERSISTENT_PREFS:
+            self.root.geometry(self.prefs['windowgeometry'].encode('utf8'))
+        else:
+            self.root.update_idletasks()
+            w = self.root.winfo_screenwidth()
+            h = self.root.winfo_screenheight()
+            rootsize = (605, 575)
+            x = w/2 - rootsize[0]/2
+            y = h/2 - rootsize[1]/2
+            self.root.geometry('%dx%d+%d+%d' % (rootsize + (x, y)))
+        self.root.protocol('WM_DELETE_WINDOW', self.quitting)
 
     # read queue shared between this main process and spawned child processes
     def readQueueUntilEmpty(self):
@@ -167,10 +208,11 @@ class MainDialog(Tkinter.Frame):
         cwd = cwd.encode('utf-8')
         mobipath = tkFileDialog.askopenfilename(
             parent=None, title='Select Unencrypted Kindle eBook File',
-            initialdir=cwd,
+            initialdir=self.prefs['mobipath'] or cwd,
             initialfile=None,
-            defaultextension='.mobi', filetypes=[('Kindle Mobi eBook File', '.mobi'), ('Kindle PRC eBook File', '.prc'), ('Kindle AZW eBook File', '.azw'), ('Kindle AZW4 Print Replica', '.azw4'),('Kindle Version 8', '.azw3'),('All Files', '.*')])
+            defaultextension=('.mobi', '.prc', '.azw', '.azw4', '.azw3'), filetypes=[('All Kindle formats', ('.mobi', '.prc', '.azw', '.azw4', '.azw3')), ('Kindle Mobi eBook File', '.mobi'), ('Kindle PRC eBook File', '.prc'), ('Kindle AZW eBook File', '.azw'), ('Kindle AZW4 Print Replica', '.azw4'),('Kindle Version 8', '.azw3'),('All Files', '.*')])
         if mobipath:
+            self.prefs['mobipath'] = os.path.dirname(mobipath)
             mobipath = os.path.normpath(mobipath)
             mobipath = utf8_str(mobipath)
             self.mobipath.delete(0, Tkconstants.END)
@@ -183,10 +225,11 @@ class MainDialog(Tkinter.Frame):
         cwd = cwd.encode('utf-8')
         apnxpath = tkFileDialog.askopenfilename(
             parent=None, title='Optional APNX file associated with AZW3',
-            initialdir=cwd,
+            initialdir=self.prefs['apnxpath'] or cwd,
             initialfile=None,
             defaultextension='.apnx', filetypes=[('Kindle APNX Page Information File', '.apnx'), ('All Files', '.*')])
         if apnxpath:
+            self.prefs['apnxpath'] = os.path.dirname(apnxpath)
             apnxpath = os.path.normpath(apnxpath)
             apnxpath = utf8_str(apnxpath)
             self.apnxpath.delete(0, Tkconstants.END)
@@ -202,12 +245,13 @@ class MainDialog(Tkinter.Frame):
             # on windows - bug has been reported but not fixed for years
             # workaround by using our own unicode aware version
             outpath = AskFolder(message="Folder to Store Output into", 
-                defaultLocation=os.getcwdu())
+                defaultLocation=self.prefs['outpath'] or cwd)
         else:
             outpath = tkFileDialog.askdirectory(
                 parent=None, title='Folder to Store Output into',
-                initialdir=cwd, initialfile=None)
+                initialdir=self.prefs['outpath'] or cwd, initialfile=None)
         if outpath:
+            self.prefs['outpath'] = outpath
             outpath = os.path.normpath(outpath)
             outpath = utf8_str(outpath)
             self.outpath.delete(0, Tkconstants.END)
@@ -220,7 +264,11 @@ class MainDialog(Tkinter.Frame):
         if self.p2 != None:
             if (self.p2.exitcode == None):
                 self.p2.terminate()
+        if PERSISTENT_PREFS:
+            if not saveprefs(CONFIGFILE, self.prefs, self):
+                print 'Couldn\'t save INI file.'
         self.root.destroy()
+        self.quit()
 
 
     # run in a child process and collect its output
@@ -231,14 +279,14 @@ class MainDialog(Tkinter.Frame):
         apnxpath = utf8_str(self.apnxpath.get())
         outdir = utf8_str(self.outpath.get())
         if not mobipath or not path.exists(mobipath):
-            self.status['text'] = 'Specified eBook file does not exist'
+            self.status.set('Specified eBook file does not exist')
             self.sbotton.configure(state='normal')
             return
         apnxfile = None
         if apnxpath != "" and path.exists(apnxpath):
             apnxfile = apnxpath
         if not outdir:
-            self.status['text'] = 'No output directory specified'
+            self.status.set('No output directory specified')
             self.sbotton.configure(state='normal')
             return
         q = self.q
@@ -288,9 +336,9 @@ def unpackEbook(q, infile, outdir, apnxfile, dump, writeraw, splitcombos):
 def main(argv=utf8_argv()):
     root = Tkinter.Tk()
     root.title('Kindle eBook Unpack Tool')
-    root.resizable(True, False)
-    root.minsize(300, 0)
-    MainDialog(root).pack(fill=Tkconstants.X, expand=1)
+    root.minsize(440, 350)
+    root.resizable(True, True)
+    MainDialog(root).pack(fill=Tkconstants.BOTH, expand=Tkconstants.YES)
     root.mainloop()
     return 0
     

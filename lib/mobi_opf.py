@@ -286,9 +286,10 @@ class OPFProcessor(object):
             del metadata['ThumbOffset']
         for metaName in META_TAGS:
             if metaName in metadata.keys():
+                # print "in opf processing ", metaName
                 for value in metadata[metaName]:
                     data.append('<meta name="'+metaName+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
-                    del metadata[metaName]
+                del metadata[metaName]
         for key in metadata.keys():
             for value in metadata[key]:
                 if key == 'StartOffset':
@@ -551,7 +552,7 @@ class OPFProcessor(object):
 
 
     def buildOPFSpine(self, spinerefs, isNCX):
-        # build spine
+        # build spine for mobi8
         k8resc = self.k8resc
         hasK8RescSpine = k8resc != None and k8resc.hasSpine()
         data = []
@@ -561,7 +562,10 @@ class OPFProcessor(object):
         ncx = ''
         if isNCX:
             ncx = ' toc="ncx"'
-        spine_start_tag = '<spine{:s}{:s}>\n'.format(ppd, ncx)
+        map=''
+        if self.pagemap != '':
+            map = ' page-map="map"'
+        spine_start_tag = '<spine{:s}{:s}{:s}>\n'.format(ppd, map, ncx)
         data.append(spine_start_tag)
         if hasK8RescSpine:
             spine_ = k8resc.spine.toxml()
