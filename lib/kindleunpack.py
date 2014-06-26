@@ -97,6 +97,8 @@
 #  0.72b- preview for primary epub3 support. A parameter epubver(default='2') is added to process_all_mobi_headers(), unpackBook().
 #  0.72c- preview for apnx page support
 #  0.72d- more bugs fixed in preview features, much improved GUI with ability to dynaically grow the Log Window with preference support
+#  0.72e- more bug fixes, Tk GUI adds support for epub version and HDImage use
+#  0.72f- more bug fixes, implement use hd images if present
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -157,7 +159,7 @@ from mobi_k8proc import K8Processor
 from mobi_split import mobi_split
 from mobi_k8resc import K8RESCProcessor
 from mobi_nav import NAVProcessor
-from mobi_cover import CoverProcessor
+from mobi_cover import CoverProcessor, get_image_type
 from mobi_pagemap import PageMapProcessor
 from mobi_dict import dictSupport
 
@@ -259,26 +261,14 @@ def processFONT(i, files, imgnames, sect, data, obfuscate_data):
     return imgnames, obfuscate_data
 
 
-def processCRES(i, files, imgnames, sect, data, cover_index=-1):
+def processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd):
     # extract an HDImage
     global DUMP
     data = data[12:]
-    imgtype = imghdr.what(None, data)
-
-    # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
-    # with only the magic JPEG bytes out there...
-    # ImageMagick handles those, so, do it too.
-    if imgtype is None and data[0:2] == b'\xFF\xD8':
-        # Get last non-null bytes
-        last = len(data)
-        while (data[last-1:last] == b'\x00'):
-            last-=1
-        # Be extra safe, check the trailing bytes, too.
-        if data[last-2:last] == b'\xFF\xD9':
-            imgtype = "jpeg"
+    imgtype = get_image_type(None, data)
 
     if imgtype is None:
-        print "Warning: Section %s does not contain a recognised resource" % i
+        print "Warning: CRES Section %s does not contain a recognised resource" % i
         imgnames.append(None)
         sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s" % describe(data[0:4]))
         if DUMP:
@@ -286,20 +276,26 @@ def processCRES(i, files, imgnames, sect, data, cover_index=-1):
             outname= os.path.join(files.outdir, fname)
             open(pathof(outname), 'wb').write(data)
             sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
+        image_ptr += 1
+        return imgnames, image_ptr
+
+    if use_hd:
+        # overwrite corresponding lower res image with hd version
+        imgname = imgnames[image_ptr]
+        imgdest = files.imgdir
     else:
         imgname = "HDimage%05d.%s" % (i, imgtype)
-        if i == cover_index:
-            imgname = "HDcover%05d.%s" % (i, imgtype)
-        print "Extracting HD image: {0:s} from section {1:d}".format(imgname,i)
-        outimg = os.path.join(files.hdimgdir, imgname)
-        open(pathof(outimg), 'wb').write(data)
-        imgnames.append(None)
-        sect.setsectiondescription(i,"Optional HD Image {0:s}".format(imgname))
+        imgdest = files.hdimgdir
+    print "Extracting HD image: {0:s} from section {1:d}".format(imgname,i)
+    outimg = os.path.join(imgdest, imgname)
+    open(pathof(outimg), 'wb').write(data)
+    imgnames.append(None)
+    sect.setsectiondescription(i,"Optional HD Image {0:s}".format(imgname))
+    image_ptr += 1
+    return imgnames, image_ptr
 
-    return imgnames
 
-
-def processCONT(i, files, imgnames, sect, data, begCONT=-1):
+def processCONT(i, files, imgnames, sect, data):
     global DUMP
     # process a container header, most of this is unknown
     # right now only extract its EXTH
@@ -318,9 +314,7 @@ def processCONT(i, files, imgnames, sect, data, begCONT=-1):
             fname = "CONT_Header%05d.dat" % i
             outname= os.path.join(files.outdir, fname)
             open(pathof(outname), 'wb').write(data)
-        if begCONT < 0:
-            begCONT = i + 1
-    return imgnames, begCONT
+    return imgnames
 
 
 def processkind(i, files, imgnames, sect, data):
@@ -383,25 +377,10 @@ def processRESC(i, files, imgnames, sect, data, resc):
     return imgnames, resc
 
 
-def processImage(i, files, imgnames, sect, data, cover_index=-1):
+def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
     global DUMP
     # Extract an Image
-
-    # Get the proper file extension
-    imgtype = imghdr.what(None, data)
-
-    # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
-    # with only the magic JPEG bytes out there...
-    # ImageMagick handles those, so, do it too.
-    if imgtype is None and data[0:2] == b'\xFF\xD8':
-        # Get last non-null bytes
-        last = len(data)
-        while (data[last-1:last] == b'\x00'):
-            last-=1
-        # Be extra safe, check the trailing bytes, too.
-        if data[last-2:last] == b'\xFF\xD9':
-            imgtype = "jpeg"
-
+    imgtype = get_image_type(None, data)
     if imgtype is None:
         print "Warning: Section %s does not contain a recognised resource" % i
         imgnames.append(None)
@@ -411,16 +390,19 @@ def processImage(i, files, imgnames, sect, data, cover_index=-1):
             outname= os.path.join(files.outdir, fname)
             open(pathof(outname), 'wb').write(data)
             sect.setsectiondescription(i,"Mysterious Section, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
-    else:
-        imgname = "image%05d.%s" % (i, imgtype)
-        if i == cover_index:
-            imgname = "cover%05d.%s" % (i, imgtype)
-        print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
-        outimg = os.path.join(files.imgdir, imgname)
-        open(pathof(outimg), 'wb').write(data)
-        imgnames.append(imgname)
-        sect.setsectiondescription(i,"Image {0:s}".format(imgname))
-    return imgnames
+        return imgnames, image_ptr
+
+    imgname = "image%05d.%s" % (i, imgtype)
+    if cover_offset and i == beg + cover_offset:
+        imgname = "cover%05d.%s" % (i, imgtype)
+    print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
+    outimg = os.path.join(files.imgdir, imgname)
+    open(pathof(outimg), 'wb').write(data)
+    imgnames.append(imgname)
+    sect.setsectiondescription(i,"Image {0:s}".format(imgname))
+    if image_ptr == -1:
+        image_ptr = i - beg
+    return imgnames, image_ptr
 
 
 def processPrintReplica(metadata, files, imgnames, mh):
@@ -703,10 +685,11 @@ def processUnknownSections(mh, sect, files, K8Boundary):
             sect.setsectiondescription(i, description)
 
 
-def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False, epubver='2'):
+def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False, epubver='2', use_hd=False):
     global DUMP
     global WRITE_RAW_DATA
     imgnames = []
+    image_ptr = -1
     resc = None
     obfuscate_data = []
     for mh in mhlst:
@@ -751,8 +734,8 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
 
         cover_offset = int(metadata.get('CoverOffset', ['-1'])[0])
         if not CREATE_COVER_PAGE:
-            cover_offset = -1
-        begCONT = -1
+            cover_offset = None
+
         for i in xrange(beg, end):
             data = sect.loadSection(i)
             type = data[0:4]
@@ -778,14 +761,15 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             elif type == "FONT":
                 imgnames, obfuscate_data = processFONT(i, files, imgnames, sect, data, obfuscate_data)
             elif type == "CRES":
-                imgnames = processCRES(i, files, imgnames, sect, data, begCONT + cover_offset)
+                imgnames, image_ptr = processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd)
             elif type == "CONT":
-                imgnames, begCONT = processCONT(i, files, imgnames, sect, data, begCONT)
+                imgnames = processCONT(i, files, imgnames, sect, data)
             elif type == "kind":
                 imgnames = processkind(i, files, imgnames, sect, data)
             elif type == chr(0xa0) + chr(0xa0) + chr(0xa0) + chr(0xa0):
                 sect.setsectiondescription(i,"Empty_HD_Image/Resource_Placeholder")
                 imgnames.append(None)
+                image_ptr += 1
             elif type == "RESC":
                 imgnames, resc = processRESC(i, files, imgnames, sect, data, resc)
             elif data == EOF_RECORD:
@@ -796,7 +780,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                 imgnames.append(None)
             else:
                 # if reached here should be an image ow treat as unknown
-                imgnames = processImage(i, files, imgnames, sect, data, beg + cover_offset)
+                imgnames, image_ptr  = processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset)
 
         # done unpacking resources
         # rename cover image to 'coverXXXXX.ext'
@@ -821,7 +805,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
     return
 
 
-def unpackBook(infile, outdir, apnxfile=None, epubver='2', dodump=False, dowriteraw=False, dosplitcombos=False):
+def unpackBook(infile, outdir, apnxfile=None, epubver='2', use_hd=False, dodump=False, dowriteraw=False, dosplitcombos=False):
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
@@ -890,7 +874,7 @@ def unpackBook(infile, outdir, apnxfile=None, epubver='2', dodump=False, dowrite
     if hasK8:
         files.makeK8Struct()
 
-    process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, False, epubver)
+    process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, False, epubver, use_hd)
 
     if DUMP:
         sect.dumpsectionsinfo()
@@ -906,19 +890,20 @@ def usage(progname):
     print "Usage:"
     print "  %s -r -s -p apnxfile -d -h --epub_version= infile [outdir]" % progname
     print "Options:"
-    print "    -r              write raw data to the output folder"
-    print "    -s              split combination mobis into mobi7 and mobi8 ebooks"
-    print "    -d              dump headers and other info to output and extra files"
-    print "    -h              print this help message"
-    print "    -p   apnxfile   apnx file associated with an azw3 infile"
-    print "    --epub_version= set epub version. 2:epub2, 3:epub3, A:define automatically"
+    print "    -h                 print this help message"
+    print "    -i                 use HD Images if present in place of lower res images"
+    print "    -r                 write raw data to the output folder"
+    print "    -s                 split combination mobis into mobi7 and mobi8 ebooks"
+    print "    -d                 dump headers and other info to output and extra files"
+    print "    -p apnxfile        apnx file associated with an azw3 infile"
+    print "    --epub_version=    specify epub version: 2, 3 or A for automatic"
 
 
 def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72d preview with epub3 and APNX support"
+    print "kindleunpack v0.72f preview with epub3 and APNX support"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
@@ -929,7 +914,7 @@ def main():
     argv=utf8_argv()
     progname = os.path.basename(argv[0])
     try:
-        opts, args = getopt.getopt(argv[1:], "hdrsp:", ['epub_version='])
+        opts, args = getopt.getopt(argv[1:], "dhirsp:", ['epub_version='])
     except getopt.GetoptError, err:
         print str(err)
         usage(progname)
@@ -941,8 +926,14 @@ def main():
 
     apnxfile = None
     epubver = '2'
+    use_hd = False
 
     for o, a in opts:
+        if o == "-h":
+            usage(progname)
+            sys.exit(0)
+        if o == "-i":
+            use_hd = True
         if o == "-d":
             DUMP = True
         if o == "-r":
@@ -951,9 +942,6 @@ def main():
             SPLIT_COMBO_MOBIS = True
         if o == "-p":
             apnxfile = a
-        if o == "-h":
-            usage(progname)
-            sys.exit(0)
         if o == "--epub_version":
             epubver = a
 
@@ -971,7 +959,7 @@ def main():
 
     try:
         print 'Unpacking Book...'
-        unpackBook(infile, outdir, apnxfile, epubver)
+        unpackBook(infile, outdir, apnxfile, epubver, use_hd)
         print 'Completed'
 
     except ValueError, e:

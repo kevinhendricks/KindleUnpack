@@ -67,6 +67,7 @@ import Tkconstants
 import tkFileDialog
 import tkMessageBox
 import tkFont
+import ttk
 
 from scrolltextwidget import ScrolledText
 
@@ -86,8 +87,11 @@ class MainDialog(Tkinter.Frame):
         Tkinter.Label(self, textvariable=self.status, justify='center').grid(row=0, columnspan=3, sticky=Tkconstants.N)
         self.status.set('Upack a non-DRM Kindle eBook')
         sticky = Tkconstants.E + Tkconstants.W
+        ALL = Tkconstants.E+Tkconstants.W+Tkconstants.N+Tkconstants.S
+        # Set to the column the textentry boxes are in.
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(8, weight=1)
+        # Set to the row the debug log widget is in.
+        self.grid_rowconfigure(10, weight=1)
 
         Tkinter.Label(self, text='').grid(row=1, sticky=Tkconstants.E)
         Tkinter.Label(self, text='Unencrypted Kindle eBook input file', wraplength=200).grid(row=2, sticky=Tkconstants.E)
@@ -134,10 +138,24 @@ class MainDialog(Tkinter.Frame):
             checkbox.select()
         checkbox.grid(row=7, column=1, columnspan=2, sticky=Tkconstants.W)
 
+        self.hdvar = Tkinter.IntVar()
+        checkbox = Tkinter.Checkbutton(self, text="Use HD Images If Present", variable=self.hdvar)
+        if self.prefs['hdvar'] and PERSISTENT_PREFS:
+            checkbox.select()
+        checkbox.grid(row=8, column=1, columnspan=2, sticky=Tkconstants.W)
+
+        Tkinter.Label(self, text='ePub Output Type:').grid(row=9, sticky=Tkconstants.E)
+        self.epubver_val = Tkinter.StringVar()
+        self.epubver = ttk.Combobox(self, textvariable=self.epubver_val, state='readonly')
+        self.epubver['values'] = ('ePub 2', 'ePub 3', 'Auto-detect')
+        self.epubver.current(0)
+        if self.prefs['epubver'] and PERSISTENT_PREFS:
+            self.epubver.current(self.prefs['epubver'])
+        self.epubver.grid(row=9, column=1, columnspan=2, pady=(3,5), sticky=Tkconstants.W)
+
         msg1 = 'Conversion Log \n\n'
         self.stext = ScrolledText(self, bd=5, relief=Tkconstants.RIDGE, wrap=Tkconstants.WORD)
-        self.stext.grid(row=8, rowspan=3, column=0, columnspan=3, sticky=Tkconstants.E+Tkconstants.W+Tkconstants.N+Tkconstants.S)
-        # self.stext.grid(row=8, rowspan=3, column=0, columnspan=3, sticky=Tkconstants.E+Tkconstants.W+Tkconstants.N+Tkconstants.S)
+        self.stext.grid(row=10, column=0, columnspan=3, sticky=ALL)
         self.stext.insert(Tkconstants.END,msg1)
 
         self.sbotton = Tkinter.Button(
@@ -244,8 +262,8 @@ class MainDialog(Tkinter.Frame):
             # tk_chooseDirectory is horribly broken for unicode paths
             # on windows - bug has been reported but not fixed for years
             # workaround by using our own unicode aware version
-            outpath = AskFolder(message="Folder to Store Output into", 
-                defaultLocation=self.prefs['outpath'] or cwd)
+            outpath = AskFolder(message="Folder to Store Output into",
+                defaultLocation=self.prefs['outpath'] or os.getcwdu())
         else:
             outpath = tkFileDialog.askdirectory(
                 parent=None, title='Folder to Store Output into',
@@ -297,6 +315,7 @@ class MainDialog(Tkinter.Frame):
         dump = False
         writeraw = False
         splitcombos = False
+        use_hd = False
         if self.dbgvar.get() == 1:
             dump = True
             log += 'Debug = True\n'
@@ -306,10 +325,21 @@ class MainDialog(Tkinter.Frame):
         if self.splitvar.get() == 1:
             splitcombos = True
             log += 'Split Combo KF8 Kindle eBooks = True\n'
+        if self.epubver.current() == 0:
+            epubversion = '2'
+        elif self.epubver.current() == 1:
+            epubversion = '3'
+        else:
+            epubversion = 'A'
+        log += 'Epub Output Type Set To: {0}\n'.format(self.epubver_val.get())
+        if self.hdvar.get():
+            use_hd = True
+            # stub for processing the Use HD Images setting
+            log += 'Use HD Images If Present = True\n'
         log += '\n\n'
         log += 'Please Wait ...\n\n'
         self.stext.insert(Tkconstants.END,log)
-        self.p2 = Process(target=unpackEbook, args=(q, mobipath, outdir, apnxfile, dump, writeraw, splitcombos))
+        self.p2 = Process(target=unpackEbook, args=(q, mobipath, outdir, apnxfile, epubversion, use_hd, dump, writeraw, splitcombos))
         self.p2.start()
 
         # python does not seem to allow you to create
@@ -321,12 +351,12 @@ class MainDialog(Tkinter.Frame):
 
 
 # child process / multiprocessing thread starts here
-def unpackEbook(q, infile, outdir, apnxfile, dump, writeraw, splitcombos):
+def unpackEbook(q, infile, outdir, apnxfile, epubversion, use_hd, dump, writeraw, splitcombos):
     sys.stdout = QueuedStream(sys.stdout, q)
     sys.stderr = QueuedStream(sys.stderr, q)
     rv = 0
     try:
-        kindleunpack.unpackBook(infile, outdir, apnxfile, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
+        kindleunpack.unpackBook(infile, outdir, apnxfile, epubversion, use_hd, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
     except Exception, e:
         print "Error: %s" % e
         rv = 1

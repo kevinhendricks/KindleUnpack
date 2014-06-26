@@ -23,6 +23,8 @@ iswindows = sys.platform.startswith('win')
 # on macosx and linux this is utf-8
 
 def pathof(s):
+    if s is None:
+        return None
     if isinstance(s, unicode):
         print "Warning: pathof expects utf-8 encoded byestring: ", s
         if iswindows:
@@ -50,3 +52,5 @@ def listdir(s):
         rv.append(utf8_str(file, enc=sys.getfilesystemencoding()))
     return rv
 
+def getcwd():
+    return utf8_str(os.getcwdu())
