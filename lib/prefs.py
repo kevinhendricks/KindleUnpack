@@ -18,6 +18,8 @@ def getprefs(configfile, tkobj, PERSIST):
     prefs['splitvar'] = 0
     prefs['rawvar'] = 0
     prefs['dbgvar'] = 0
+    prefs['hdvar'] = 0
+    prefs['epubver'] = 0
     tkobj.update_idletasks()
     w = tkobj.winfo_screenwidth()
     h = tkobj.winfo_screenheight()
@@ -49,6 +51,10 @@ def getprefs(configfile, tkobj, PERSIST):
             prefs['rawvar'] = config.getint('Defaults', 'rawvar')
         if config.has_option('Defaults', 'dbgvar'):
             prefs['dbgvar'] = config.getint('Defaults', 'dbgvar')
+        if config.has_option('Defaults', 'hdvar'):
+            prefs['hdvar'] = config.getint('Defaults', 'hdvar')
+        if config.has_option('Defaults', 'epubver'):
+            prefs['epubver'] = config.getint('Defaults', 'epubver')
         if config.has_option('Geometry', 'windowgeometry'):
             prefs['windowgeometry'] = config.get('Geometry', 'windowgeometry')
 
@@ -83,6 +89,8 @@ def saveprefs(configfile, prefs, tkobj):
     config.set('Defaults', 'splitvar', tkobj.splitvar.get())
     config.set('Defaults', 'rawvar', tkobj.rawvar.get())
     config.set('Defaults', 'dbgvar', tkobj.dbgvar.get())
+    config.set('Defaults', 'hdvar', tkobj.hdvar.get())
+    config.set('Defaults', 'epubver', tkobj.epubver.current())
     config.add_section('Geometry')
     config.set('Geometry', 'windowgeometry', tkobj.root.geometry())
     try:

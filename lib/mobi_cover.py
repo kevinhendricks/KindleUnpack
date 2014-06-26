@@ -26,16 +26,14 @@ from path import pathof
 
 
 def get_image_type(imgname, imgdata=None):
-    '''Determine the image type.
+    imgtype = imghdr.what(pathof(imgname), imgdata)
 
-    '''
-    imgtype = imghdr.what(imgname, imgdata)
     # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
     # with only the magic JPEG bytes out there...
     # ImageMagick handles those, so, do it too.
     if imgtype is None:
         if imgdata == None:
-            f = open(imgname, 'rb')
+            f = open(pathof(imgname), 'rb')
             imgdata = f.read()
         if imgdata[0:2] == b'\xFF\xD8':
             # Get last non-null bytes
@@ -122,10 +120,11 @@ class CoverProcessor(object):
         self.metadata = metadata
         self.imgnames = imgnames
         self.cover_page = COVER_PAGE_FINENAME
-        self.use_svg = USE_SVG_WRAPPER
+        self.use_svg = USE_SVG_WRAPPER # Use svg wrapper.
         self.lang = metadata.get('Language', ['en'])[0]
-        self.width = -1
-        self.height = -1
+        # This should ensure that if the methods to find the cover image's
+        # dimensions should fail for any reason, the SVG routine will not be used.
+        [self.width, self.height] = (-1,-1)
         if FORCE_DEFAULT_TITLE:
             self.title = DEFAULT_TITLE
         else:
@@ -145,9 +144,9 @@ class CoverProcessor(object):
             try:
                 if imgdata == None:
                     fname = os.path.join(files.imgdir, self.cover_image)
-                    self.width, self.height = get_image_size(fname)
+                    [self.width, self.height] = get_image_size(fname)
                 else:
-                    self.width, self.height = get_image_size(None, imgdata)
+                    [self.width, self.height] = get_image_size(None, imgdata)
             except:
                 self.use_svg = False
             width = self.width
