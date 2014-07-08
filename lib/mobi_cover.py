@@ -32,7 +32,7 @@ def get_image_type(imgname, imgdata=None):
     # with only the magic JPEG bytes out there...
     # ImageMagick handles those, so, do it too.
     if imgtype is None:
-        if imgdata == None:
+        if imgdata is None:
             f = open(pathof(imgname), 'rb')
             imgdata = f.read()
         if imgdata[0:2] == b'\xFF\xD8':
@@ -52,7 +52,7 @@ def get_image_size(imgname, imgdata=None):
     Originally,
     Determine the image type of fhandle and return its size.
     from draco'''
-    if imgdata == None:
+    if imgdata is None:
         fhandle = open(pathof(imgname), 'rb')
         head = fhandle.read(24)
     else:
@@ -68,7 +68,7 @@ def get_image_size(imgname, imgdata=None):
         width, height = struct.unpack('>ii', head[16:24])
     elif imgtype == 'gif':
         width, height = struct.unpack('<HH', head[6:10])
-    elif imgtype == 'jpeg' and imgdata == None:
+    elif imgtype == 'jpeg' and imgdata is None:
         try:
             fhandle.seek(0) # Read 0xff next
             size = 2
@@ -85,7 +85,7 @@ def get_image_size(imgname, imgdata=None):
             height, width = struct.unpack('>HH', fhandle.read(4))
         except Exception: #IGNORE:W0703
             return
-    elif imgtype == 'jpeg' and imgdata != None:
+    elif imgtype == 'jpeg' and imgdata is not None:
         try:
             pos = 0
             size = 2
@@ -131,18 +131,18 @@ class CoverProcessor(object):
             self.title = metadata.get('Title', [DEFAULT_TITLE])[0]
 
         self.cover_image = None
-        if imgname != None:
+        if imgname is not None:
             self.cover_image = imgname
         elif 'CoverOffset' in metadata.keys():
             imageNumber = int(metadata['CoverOffset'][0])
             cover_image = self.imgnames[imageNumber]
-            if cover_image != None:
+            if cover_image is not None:
                 self.cover_image = cover_image
             else:
                 print 'Warning: Cannot identify the cover image.'
         if self.use_svg:
             try:
-                if imgdata == None:
+                if imgdata is None:
                     fname = os.path.join(files.imgdir, self.cover_image)
                     [self.width, self.height] = get_image_size(fname)
                 else:

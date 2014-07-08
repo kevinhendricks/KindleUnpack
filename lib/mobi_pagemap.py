@@ -111,7 +111,7 @@ class PageMapProcessor:
         for i in xrange(len(self.pagenames)):
             pos = self.pageoffsets[i]
             name = self.pagenames[i]
-            if name != None and name != "":
+            if name is not None and name != "":
                 [pn, dir, filename, skelpos, skelend, aidtext] = k8proc.getSkelInfo(pos)
                 idtext = k8proc.getPageIDTag(pos)
                 linktgt = filename

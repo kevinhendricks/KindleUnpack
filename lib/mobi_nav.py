@@ -68,20 +68,20 @@ class NAVProcessor(object):
             mo_type = re_type.search(reference)
             mo_title = re_title.search(reference)
             mo_link = re_link.search(reference)
-            if mo_type != None:
+            if mo_type is not None:
                 type_ = type_map.get(mo_type.group(1), None)
             else:
                 type_ = None
-            if mo_title != None:
+            if mo_title is not None:
                 title = mo_title.group(1)
             else:
                 title = None
-            if mo_link != None:
+            if mo_link is not None:
                 link = mo_link.group(1)
             else:
                 link = None
 
-            if type_ != None and title != None and link != None:
+            if type_ is not None and title is not None and link is not None:
                 link = os.path.relpath(link, dir_).replace('\\', '/')
                 data += element.format(type_, link, title)
         if len(data) > 0:

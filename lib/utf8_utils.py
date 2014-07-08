@@ -49,9 +49,9 @@ def utf8_argv():
     else:
         argv = []
         argvencoding = sys.stdin.encoding
-        if argvencoding == None:
+        if argvencoding is None:
             argvencoding = sys.getfilesystemencoding()
-        if argvencoding == None:
+        if argvencoding is None:
             argvencoding = 'utf-8'
         for arg in sys.argv:
             if type(arg) == unicode:

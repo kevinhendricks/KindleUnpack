@@ -99,6 +99,10 @@
 #  0.72d- more bugs fixed in preview features, much improved GUI with ability to dynaically grow the Log Window with preference support
 #  0.72e- more bug fixes, Tk GUI adds support for epub version and HDImage use
 #  0.72f- more bug fixes, implement use hd images if present
+#  0.72g- minor bug fixes and cleanups from tkeo
+#  0.72h- updated mobi_header and mobi_k8proc to use the correct fragment and guide terms in place of div and other
+#         to better match the terms that both Calibre and Amazon use internally to their own software
+#  0.72x- very experimental conversion to use new mobi_k8resc.py and some of its associated changes
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -329,52 +333,26 @@ def processkind(i, files, imgnames, sect, data):
     return imgnames
 
 
+# spine information from the original content.opf
 def processRESC(i, files, imgnames, sect, data, resc):
+    print "******* RESC **********"
     global DUMP
-    # spine information from the original content.opf
-    unknown1, unknown2, unknown3 = struct.unpack_from('>LLL',data,4)
-    data_ = data[16:]
-    m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)', data_)
-    resc_header = m_header.group()
-    resc_size = fromBase32(m_header.group(1))
-    resc_version = int(m_header.group(2))
-    resc_type = int(m_header.group(3))
-
-    resc_rawbytes = len(data_) - m_header.end()
-    if resc_rawbytes == resc_size:
-        # Most RESC has a nul string at its tail but some does not.
-        resc_length = resc_size
-    else:
-        end_pos = data_.find('\x00', m_header.end())
-        if end_pos < 0:
-            resc_length = resc_rawbytes
-        else:
-            resc_length = end_pos - m_header.end()
-        if resc_length != resc_size:
-            if resc_rawbytes > resc_size:
-                print "Warning: the RESC section length({:d}bytes) does not match to indicated size({:d}bytes).".format(resc_length, resc_size)
-            else:
-                print "Warning: the RESC section might be broken. Its length({:d}bytes) is shorter than indicated size({:d}bytes).".format(resc_length, resc_size)
-    resc_data = data_[m_header.end():m_header.end()+resc_length]
-    resc = [resc_version, resc_type, resc_data]
-
     if DUMP:
         rescname = "RESC%05d.dat" % i
         print "Extracting Resource: ", rescname
         outrsc = os.path.join(files.outdir, rescname)
-        f = open(pathof(outrsc), 'w')
-        f.write('section size = {0:d} bytes, size in header = {1:d} bytes, valid length = {2:d} bytes\n'.format(resc_rawbytes, resc_size, resc_length))
-        f.write('unknown(hex) = {:08X}\n'.format(unknown1))
-        f.write('unknown(hex) = {:08X}\n'.format(unknown2))
-        f.write('unknown(hex) = {:08X}\n'.format(unknown3))
-        f.write(resc_header + '\n')
-        f.write(resc_data)
-        #f.write(data_[m_header.end():])
-        f.close()
-
+        open(pathof(outrsc), 'wb').write(data)
+    # almost all of the following should be moved to mobi_k8resc and not be here
+    # try:
+    if True:
+        # Retrieve a spine and metadata from RESC; link the spine to part in K8Processor.
+        k8resc = K8RESCProcessor(data[16:])
+    else:
+        print "Warning: cannot extract information from RESC."
+        k8resc = None
     imgnames.append(None)
     sect.setsectiondescription(i,"K8 RESC section")
-    return imgnames, resc
+    return imgnames, k8resc
 
 
 def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
@@ -393,7 +371,7 @@ def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
         return imgnames, image_ptr
 
     imgname = "image%05d.%s" % (i, imgtype)
-    if cover_offset and i == beg + cover_offset:
+    if cover_offset is not None and i == beg + cover_offset:
         imgname = "cover%05d.%s" % (i, imgtype)
     print "Extracting image: {0:s} from section {1:d}".format(imgname,i)
     outimg = os.path.join(files.imgdir, imgname)
@@ -413,7 +391,7 @@ def processPrintReplica(metadata, files, imgnames, mh):
         outraw = os.path.join(files.outdir,files.getInputFileBasename() + '.rawpr')
         open(pathof(outraw),'wb').write(rawML)
 
-    filenames = []
+    fileinfo = []
     print "Print Replica ebook detected"
     try:
         numTables, = struct.unpack_from('>L', rawML, 0x04)
@@ -434,17 +412,17 @@ def processPrintReplica(metadata, files, imgnames, mh):
     except Exception, e:
         print 'Error processing Print Replica: ' + str(e)
 
-    filenames.append(['', files.getInputFileBasename() + '.pdf'])
+    fileinfo.append([None,'', files.getInputFileBasename() + '.pdf'])
     usedmap = {}
     for name in imgnames:
-        if name != None:
+        if name is not None:
             usedmap[name] = 'used'
-    opf = OPFProcessor(files, metadata, filenames, imgnames, False, mh, usedmap)
+    opf = OPFProcessor(files, metadata, fileinfo, imgnames, False, mh, usedmap)
     opf.writeOPF()
 
 
 
-def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile=None, epubver='2'):
+def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfuscate_data, apnxfile=None, epubver='2'):
     global DUMP
     global WRITE_RAW_DATA
 
@@ -473,7 +451,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
         last_start = int(last_start)
         if last_start == 0xffffffff:
             last_start = 0
-        seq, idtext = k8proc.getDivTblInfo(last_start)
+        seq, idtext = k8proc.getFragTblInfo(last_start)
         filename, idtext = k8proc.getIDTagByPosFid(toBase32(seq), '0000000000')
         linktgt = filename
         if idtext != '':
@@ -481,13 +459,13 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
         guidetext += '<reference type="text" href="Text/%s" />\n' % linktgt
 
     # if apnxfile is passed in use it for page map information
-    if apnxfile != None and pagemapproc == None:
+    if apnxfile is not None and pagemapproc is None:
         apnxdata = "00000000" + file(apnxfile, 'rb').read()
         pagemapproc = PageMapProcessor(mh, apnxdata)
 
     # generate the page map
     pagemapxml = ''
-    if pagemapproc != None:
+    if pagemapproc is not None:
         pagemapxml = pagemapproc.generateKF8PageMapXML(k8proc)
         outpm = os.path.join(files.k8oebps,'page-map.xml')
         open(pathof(outpm),'wb').write(pagemapxml)
@@ -517,13 +495,26 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
     htmlproc = XHTMLK8Processor(imgnames, k8proc)
     usedmap = htmlproc.buildXHTML()
 
+
     # write out the xhtml svg, and css files
-    filenames = []
+    # fileinfo = [skelid|coverpage, dir, name]
+    fileinfo = []
+    # first create a cover page if none exists
+    if k8resc is not None and CREATE_COVER_PAGE:
+        cover = CoverProcessor(files, metadata, imgnames)
+        cover_img = cover.getImageName()
+        if cover_img is not None:
+            cover_page = cover.getXHTMLName()
+            if "coverpage" in k8resc.spine_idrefs.keys() and k8resc.spine_order[0] == "coverpage":
+                filename = cover.getXHTMLName()
+                fileinfo.append(["coverpage", 'Text', filename])
+                guidetext += cover.guide_toxml()
+                cover.writeXHTML()
     n =  k8proc.getNumberOfParts()
     for i in range(n):
         part = k8proc.getPart(i)
         [skelnum, dir, filename, beg, end, aidtext] = k8proc.getPartInfo(i)
-        filenames.append([dir, filename])
+        fileinfo.append([str(skelnum), dir, filename])
         fname = os.path.join(files.k8oebps,dir,filename)
         open(pathof(fname),'wb').write(part)
     n = k8proc.getNumberOfFlows()
@@ -531,53 +522,12 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfusca
         [type, format, dir, filename] = k8proc.getFlowInfo(i)
         flowpart = k8proc.getFlow(i)
         if format == 'file':
-            filenames.append([dir, filename])
+            fileinfo.append([None, dir, filename])
             fname = os.path.join(files.k8oebps,dir,filename)
             open(pathof(fname),'wb').write(flowpart)
 
-
-    # XXX: offloaded most of the work done here to mobi_k8resc.
-    # process RESC spine information
-    try:
-        # Retrieve a spine and a metadata from RESC section.
-        k8resc = K8RESCProcessor(resc, k8proc)
-    except:
-        k8resc = None
-
-    if k8resc != None and CREATE_COVER_PAGE:
-        # Create a cover page if not exist.
-        cover = CoverProcessor(files, metadata, imgnames)
-        cover_img = cover.getImageName()
-        if cover_img != None:
-            createCoverPage = False
-            cover_page = cover.getXHTMLName()
-            first_itemref_index = k8resc.spine.getStartIndex()
-            if not k8resc.spine.isLinkToPart(first_itemref_index):
-                # Create a cover page if first spine item has no correspondence.
-                createCoverPage = True
-            else:
-                # Insert a cover page if first spine item does not use the cover image.
-                partno = k8resc.spine.getPartno(first_itemref_index)
-                if partno >= 0 and partno < k8proc.getNumberOfParts():
-                    part = k8proc.getPart(partno)
-                else:
-                    part = ''
-                if not cover_img in part:
-                    k8resc.spine.insert(first_itemref_index, 'inserted_cover')
-                    createCoverPage = True
-
-            if createCoverPage:
-                k8resc.spine.setFilename(first_itemref_index, cover_page)
-                k8resc.spine.setAttribute(first_itemref_index, 'linear', 'no')
-
-                guidetext += cover.guide_toxml()
-                filename = cover.getXHTMLName()
-                filenames.append(['Text', filename])
-                cover.writeXHTML()
-
-
     # create the opf
-    opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
+    opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
     uuid = opf.writeK8OPF(bool(obfuscate_data), epubver)
 
     if opf.hasNAV():
@@ -620,9 +570,9 @@ def processMobi7(mh, metadata, sect, files, imgnames):
     srctext, usedmap = proc.insertHREFS()
 
     # write the proper mobi html
-    filenames=[]
+    fileinfo=[]
     fname = files.getInputFileBasename() + '.html'
-    filenames.append(['', fname])
+    fileinfo.append([None,'', fname])
     outhtml = os.path.join(files.mobi7dir, fname)
     open(pathof(outhtml), 'wb').write(srctext)
 
@@ -631,7 +581,7 @@ def processMobi7(mh, metadata, sect, files, imgnames):
     pagemapxml = ''
     guidematch = re.search(r'''<guide>(.*)</guide>''',srctext,re.IGNORECASE+re.DOTALL)
     if guidematch:
-        replacetext = r'''href="'''+filenames[0][1]+r'''#filepos\1"'''
+        replacetext = r'''href="'''+fileinfo[0][2]+r'''#filepos\1"'''
         guidetext = re.sub(r'''filepos=['"]{0,1}0*(\d+)['"]{0,1}''', replacetext, guidematch.group(1))
         guidetext += '\n'
         if isinstance(guidetext, unicode):
@@ -640,7 +590,7 @@ def processMobi7(mh, metadata, sect, files, imgnames):
             guidetext = unicode(guidetext, mh.codec).encode("utf-8")
 
     # create an OPF
-    opf = OPFProcessor(files, metadata, filenames, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext)
+    opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext)
     opf.writeOPF()
 
 
@@ -690,7 +640,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
     global WRITE_RAW_DATA
     imgnames = []
     image_ptr = -1
-    resc = None
+    k8resc = None
     obfuscate_data = []
     for mh in mhlst:
         pagemapproc = None
@@ -771,7 +721,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                 imgnames.append(None)
                 image_ptr += 1
             elif type == "RESC":
-                imgnames, resc = processRESC(i, files, imgnames, sect, data, resc)
+                imgnames, k8resc = processRESC(i, files, imgnames, sect, data, k8resc)
             elif data == EOF_RECORD:
                 sect.setsectiondescription(i,"End Of File")
                 imgnames.append(None)
@@ -793,7 +743,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
 
         # KF8 (Mobi 8)
         if mh.isK8():
-            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, resc, obfuscate_data, apnxfile, epubver)
+            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfuscate_data, apnxfile, epubver)
 
         # Old Mobi (Mobi 7)
         elif not k8only:
@@ -818,7 +768,7 @@ def unpackBook(infile, outdir, apnxfile=None, epubver='2', use_hd=False, dodump=
 
     infile = utf8_str(infile)
     outdir = utf8_str(outdir)
-    if apnxfile != None:
+    if apnxfile is not None:
         apnxfile = utf8_str(apnxfile)
 
     files = fileNames(infile, outdir)
@@ -903,7 +853,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72f preview with epub3 and APNX support"
+    print "kindleunpack v0.72x preview with epub3 and APNX support"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."

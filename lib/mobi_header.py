@@ -78,13 +78,14 @@ def dump_contexth(cpage, extheader):
            504 : 'ASIN_(504)',
            524 : 'Language_(524)',
            525 : 'TextDirection_(525)',
-           528 : 'Unknown_Logical_Value_(528)',
+           528 : 'Unknown_Logical_Value_(528)', # could this be "override-kindle-fonts" ?
+           534 : 'Input_Source_Type_(534)',
            535 : 'Kindlegen_BuildRev_Number_(535)',
-           536 : 'Unknown_(536)',
-           538 : 'Image_Size_(538)',
-           539 : 'Mimetype_(539)',
-           542 : 'Unknown_(542)',
-           543 : 'Unknown_(543)',
+           536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+           538 : 'Container_Resolution_(538)',
+           539 : 'Container_Mimetype_(539)',
+           542 : 'Unknown_but_changes_with_file_name_only_(542)',
+           543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
     }
     id_map_values = {
            115 : 'sample_(115)',
@@ -372,12 +373,16 @@ class MobiHeader:
         524 : 'Language_(524)',
         525 : 'primary-writing-mode',
         527 : 'page-progression-direction',
-        528 : 'Unknown_Logical_Value_(528)',
-        529 : 'Original_Source_Description_(529)',
-        534 : 'Unknown_(534)',
-        535 : 'Kindlegen_BuildRev_Number',
-        536 : 'Unknown_(536)',
-        542 : 'Unknown_(542)'
+        528 : 'Unknown_Logical_Value_(528)',  # could this be "override-kindle-fonts"?
+        529 : 'kindlegen_Source-Target_(529)',
+        534 : 'kindleget_Input_Source_Type_(534)',
+        535 : 'kindlegen_BuildRev_Number',
+        536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        538 : 'Container_Resolution_(539)',
+        539 : 'Container_Mimetype_(539)',
+        542 : 'Unknown_but_changes_with_file_name_only_(542)',
+        543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+ 
     }
     id_map_values = {
         115 : 'sample',
@@ -444,8 +449,8 @@ class MobiHeader:
         self.metaOrthIndex = 0xffffffff
         self.metaInflIndex = 0xffffffff
         self.skelidx = 0xffffffff
-        self.dividx = 0xffffffff
-        self.othidx = 0xffffffff
+        self.fragidx = 0xffffffff
+        self.guideidx = 0xffffffff
         self.fdst = 0xffffffff
         self.mlstart = self.sect.loadSection(self.start+1)[:4]
         self.rawSize = 0
@@ -544,14 +549,14 @@ class MobiHeader:
                 self.skelidx += self.start
 
             # Index into <div> sections in RawML
-            self.dividx, = struct.unpack_from('>L', self.header, 0xf8)
-            if self.dividx != 0xffffffff:
-                self.dividx += self.start
+            self.fragidx, = struct.unpack_from('>L', self.header, 0xf8)
+            if self.fragidx != 0xffffffff:
+                self.fragidx += self.start
 
             # Index into Other files
-            self.othidx, = struct.unpack_from('>L', self.header, 0x104)
-            if self.othidx != 0xffffffff:
-                self.othidx += self.start
+            self.guideidx, = struct.unpack_from('>L', self.header, 0x104)
+            if self.guideidx != 0xffffffff:
+                self.guideidx += self.start
 
             # dictionaries do not seem to use the same approach in K8's
             # so disable them

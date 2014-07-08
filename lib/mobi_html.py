@@ -219,7 +219,7 @@ class XHTMLK8Processor:
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
                         imageName = self.imgnames[imageNumber-1]
-                        if imageName != None:
+                        if imageName is not None:
                             replacement = '"../Images/' + imageName + '"'
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
@@ -239,7 +239,7 @@ class XHTMLK8Processor:
                     imageName = self.imgnames[imageNumber-1]
                     osep = m.group()[0]
                     csep = m.group()[-1]
-                    if imageName != None:
+                    if imageName is not None:
                         replacement = '%s%s%s'%(osep, '../Images/' + imageName, csep)
                         self.used[imageName] = 'used'
                         tag = url_img_index_pattern.sub(replacement, tag, 1)
@@ -349,7 +349,7 @@ class XHTMLK8Processor:
                         imageName = self.imgnames[imageNumber-1]
                         osep = m.group()[0]
                         csep = m.group()[-1]
-                        if imageName != None:
+                        if imageName is not None:
                             replacement = '%s%s%s'%(osep, '../Images/' + imageName, csep)
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
@@ -379,7 +379,7 @@ class XHTMLK8Processor:
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
                         imageName = self.imgnames[imageNumber-1]
-                        if imageName != None:
+                        if imageName is not None:
                             replacement = '"../Images/' + imageName + '"'
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
