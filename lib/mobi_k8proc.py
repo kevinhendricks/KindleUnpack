@@ -40,8 +40,8 @@ class K8Processor:
         self.mi = MobiIndex(sect)
         self.mh = mh
         self.skelidx = mh.skelidx
-        self.dividx = mh.dividx
-        self.othidx = mh.othidx
+        self.fragidx = mh.fragidx
+        self.guideidx = mh.guideidx
         self.fdst = mh.fdst
         self.flowmap = {}
         self.flows = None
@@ -79,46 +79,46 @@ class K8Processor:
             outtbl, ctoc_text = self.mi.getIndexData(self.skelidx, "KF8 Skeleton")
             fileptr = 0
             for [text, tagMap] in outtbl:
-                # file number, skeleton name, divtbl record count, start position, length
+                # file number, skeleton name, fragtbl record count, start position, length
                 skeltbl.append([fileptr, text, tagMap[1][0], tagMap[6][0], tagMap[6][1]])
                 fileptr += 1
         self.skeltbl = skeltbl
         if self.DEBUG:
             print "\nSkel Table:  %d entries" % len(self.skeltbl)
-            print "table: filenum, skeleton name, div tbl record count, start position, length"
+            print "table: filenum, skeleton name, frag tbl record count, start position, length"
             for j in xrange(len(self.skeltbl)):
                 print self.skeltbl[j]
 
-        # read/process the div index to create to <div> (and <p>) table
-        divtbl = []
-        if self.dividx != 0xffffffff:
+        # read/process the fragment index to create the fragment table
+        fragtbl = []
+        if self.fragidx != 0xffffffff:
             # for i in xrange(3):
-            #     fname = 'div%04d.dat' % i
-            #     data = self.sect.loadSection(self.dividx + i)
+            #     fname = 'frag%04d.dat' % i
+            #     data = self.sect.loadSection(self.fragidx + i)
             #     open(pathof(fname), 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.dividx, "KF8 Division/Fragment")
+            outtbl, ctoc_text = self.mi.getIndexData(self.fragidx, "KF8 Fragment")
             for [text, tagMap] in outtbl:
                 # insert position, ctoc offset (aidtext), file number, sequence number, start position, length
                 ctocoffset = tagMap[2][0]
                 ctocdata = ctoc_text[ctocoffset]
-                divtbl.append([int(text), ctocdata, tagMap[3][0], tagMap[4][0], tagMap[6][0], tagMap[6][1]])
-        self.divtbl = divtbl
+                fragtbl.append([int(text), ctocdata, tagMap[3][0], tagMap[4][0], tagMap[6][0], tagMap[6][1]])
+        self.fragtbl = fragtbl
         if self.DEBUG:
-            print "\nDiv (Fragment) Table: %d entries" % len(self.divtbl)
+            print "\nFragment Table: %d entries" % len(self.fragtbl)
             print "table: file position, link id text, file num, sequence number, start position, length"
-            for j in xrange(len(self.divtbl)):
-                print self.divtbl[j]
+            for j in xrange(len(self.fragtbl)):
+                print self.fragtbl[j]
 
-        # read / process other index <guide> element of opf
-        othtbl = []
-        if self.othidx != 0xffffffff:
+        # read / process guide index for guide elements of opf
+        guidetbl = []
+        if self.guideidx != 0xffffffff:
             # for i in xrange(3):
-            #     fname = 'oth%04d.dat' % i
-            #     data = self.sect.loadSection(self.othidx + i)
+            #     fname = 'guide%04d.dat' % i
+            #     data = self.sect.loadSection(self.guideidx + i)
             #     open(pathof(fname), 'wb').write(data)
-            outtbl, ctoc_text = self.mi.getIndexData(self.othidx, "KF8 Other (<guide> elements)")
+            outtbl, ctoc_text = self.mi.getIndexData(self.guideidx, "KF8 Guide elements)")
             for [text, tagMap] in outtbl:
-                # ref_type, ref_title, div/frag number
+                # ref_type, ref_title, frag number
                 ctocoffset = tagMap[1][0]
                 ref_title = ctoc_text[ctocoffset]
                 ref_type = text
@@ -127,13 +127,13 @@ class K8Processor:
                     fileno  = tagMap[3][0]
                 if 6 in tagMap.keys():
                     fileno = tagMap[6][0]
-                othtbl.append([ref_type, ref_title, fileno])
-        self.othtbl = othtbl
+                guidetbl.append([ref_type, ref_title, fileno])
+        self.guidetbl = guidetbl
         if self.DEBUG:
-            print "\nOther (Guide) Table: %d entries" % len(self.othtbl)
-            print "table: ref_type, ref_title, divtbl entry number"
-            for j in xrange(len(self.othtbl)):
-                print self.othtbl[j]
+            print "\nGuide Table: %d entries" % len(self.guidetbl)
+            print "table: ref_type, ref_title, fragtbl entry number"
+            for j in xrange(len(self.guidetbl)):
+                print self.guidetbl[j]
 
 
     def buildParts(self, rawML):
@@ -148,21 +148,21 @@ class K8Processor:
         text = self.flows[0]
         self.flows[0] = ''
 
-        # walk the <skeleton> and <div> tables to build original source xhtml files
+        # walk the <skeleton> and fragment tables to build original source xhtml files
         # *without* destroying any file position information needed for later href processing
         # and create final list of file separation start: stop points and etc in partinfo
         if self.DEBUG:
             print "\nRebuilding flow piece 0: the main body of the ebook"
         self.parts = []
         self.partinfo = []
-        divptr = 0
+        fragptr = 0
         baseptr = 0
         cnt = 0
-        for [skelnum, skelname, divcnt, skelpos, skellen] in self.skeltbl:
+        for [skelnum, skelname, fragcnt, skelpos, skellen] in self.skeltbl:
             baseptr = skelpos + skellen
             skeleton = text[skelpos: baseptr]
-            for i in range(divcnt):
-                [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[divptr]
+            for i in range(fragcnt):
+                [insertpos, idtext, filenum, seqnum, startpos, length] = self.fragtbl[fragptr]
                 aidtext = idtext[12:-2]
                 if i == 0:
                     filename = 'part%04d.xhtml' % filenum
@@ -174,17 +174,17 @@ class K8Processor:
                 if (tail.find(b'>') < tail.find(b'<') or head.rfind(b'>') < head.rfind(b'<')):
                     # There is an incomplete tag in either the head or tail.
                     # This can happen for some badly formed KF8 files
-                    print 'The div table for %s has incorrect insert position. Calculating manually.' % skelname
+                    print 'The fragment table for %s has incorrect insert position. Calculating manually.' % skelname
                     bp, ep = locate_beg_end_of_tag(skeleton, aidtext)
                     if bp != ep:
                         actual_inspos = ep + 1 + startpos
                 if insertpos != actual_inspos:
-                    print "fixed corrupt div/frag table insert position", insertpos+skelpos, actual_inspos+skelpos
+                    print "fixed corrupt fragment table insert position", insertpos+skelpos, actual_inspos+skelpos
                     insertpos = actual_inspos
-                    self.divtbl[divptr][0] = actual_inspos + skelpos
+                    self.fragtbl[fragptr][0] = actual_inspos + skelpos
                 skeleton = skeleton[0:insertpos] + slice + skeleton[insertpos:]
                 baseptr = baseptr + length
-                divptr += 1
+                fragptr += 1
             cnt += 1
             self.parts.append(skeleton)
             self.partinfo.append([skelnum, 'Text', filename, skelpos, baseptr, aidtext])
@@ -220,12 +220,12 @@ class K8Processor:
             flowpart = self.flows[j]
             nstr = '%04d' % j
             m = re.search(svg_tag_pattern, flowpart)
-            if m != None:
+            if m is not None:
                 # svg
                 type = 'svg'
                 start = m.start()
                 m2 = re.search(image_tag_pattern, flowpart)
-                if m2 != None:
+                if m2 is not None:
                     format = 'inline'
                     dir = None
                     fname = None
@@ -275,19 +275,19 @@ class K8Processor:
             id_pattern = re.compile(r'''<[^>]*\said\s*=\s*['"]([^'"]*)['"][^>]*>''',re.IGNORECASE)
             for m in re.finditer(id_pattern, rawML):
                 [filename, partnum, start, end] = self.getFileInfo(m.start())
-                [seqnum, idtext] = self.getDivTblInfo(m.start())
+                [seqnum, idtext] = self.getFragTblInfo(m.start())
                 value = fromBase32(m.group(1))
                 print "  aid: %s value: %d at: %d -> part: %d, start: %d, end: %d" % (m.group(1), value, m.start(), partnum, start, end)
-                print "       %s  divtbl entry %d" % (idtext, seqnum)
+                print "       %s  fragtbl entry %d" % (idtext, seqnum)
 
         return
 
 
-    # get information div table entry by pos
-    def getDivTblInfo(self, pos):
+    # get information fragment table entry by pos
+    def getFragTblInfo(self, pos):
         baseptr = 0
-        for j in xrange(len(self.divtbl)):
-            [insertpos, idtext, filenum, seqnum, startpos, length] = self.divtbl[j]
+        for j in xrange(len(self.fragtbl)):
+            [insertpos, idtext, filenum, seqnum, startpos, length] = self.fragtbl[j]
             if pos >= insertpos and pos < (insertpos + length):
                 return seqnum, 'in: ' + idtext
             if pos < insertpos:
@@ -337,7 +337,7 @@ class K8Processor:
         # first convert kindle:pos:fid and offset info to position in file
         row = fromBase32(posfid)
         off = fromBase32(offset)
-        [insertpos, idtext, filenum, seqnm, startpos, length] = self.divtbl[row]
+        [insertpos, idtext, filenum, seqnm, startpos, length] = self.fragtbl[row]
         pos = insertpos + off
         fname, pn, skelpos, skelend = self.getFileInfo(pos)
         if fname is None:
@@ -406,10 +406,10 @@ class K8Processor:
                 return [partnum, dir, filename, start, end, aidtext]
         return [None, None, None, None, None, None]
 
-    # fileno is actually a reference into divtbl (a fragment)
+    # fileno is actually a reference into fragtbl (a fragment)
     def getGuideText(self):
         guidetext = ''
-        for [ref_type, ref_title, fileno] in self.othtbl:
+        for [ref_type, ref_title, fileno] in self.guidetbl:
             if ref_type == 'thumbimagestandard':
                 continue
             if ref_type not in _guide_types and not ref_type.startswith('other.'):
@@ -417,7 +417,7 @@ class K8Processor:
                     ref_type = 'text'
                 else:
                     ref_type = 'other.' + ref_type
-            [pos, idtext, filenum, seqnm, startpos, length] = self.divtbl[fileno]
+            [pos, idtext, filenum, seqnm, startpos, length] = self.fragtbl[fileno]
             [pn, dir, filename, skelpos, skelend, aidtext] = self.getSkelInfo(pos)
             idtext = self.getIDTag(pos)
             linktgt = filename

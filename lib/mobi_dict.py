@@ -165,7 +165,7 @@ class dictSupport:
                 offset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * value))
                 textLength = ord(data[offset])
                 inflection = self.applyInflectionRule(mainEntry, data, offset+1, offset+1+textLength)
-                if inflection != None:
+                if inflection is not None:
                     result += '  <idx:iform name="%s" value="%s"/>' % (inflectionName, inflection)
 
             result += "</idx:infl>"
