@@ -40,10 +40,9 @@ from path import pathof
 from xml.sax.saxutils import escape as xmlescape
 from HTMLParser import HTMLParser
 EXTRA_ENTITIES = {'"':'&quot;', "'":"&apos;"}
-import mobi_taglist as taglist
 
 class OPFProcessor(object):
-    def __init__(self, files, metadata, fileinfo, imgnames, isNCX, mh, usedmap, pagemapxml='', guidetext=False, k8resc=None):
+    def __init__(self, files, metadata, fileinfo, imgnames, isNCX, mh, usedmap, pagemapxml='', guidetext='', k8resc=None, epubver='2'):
         self.files = files
         self.metadata = metadata
         self.fileinfo = fileinfo
@@ -66,11 +65,10 @@ class OPFProcessor(object):
         self.pagemap = pagemapxml
         self.ncxname = None
         self.navname = None
-        self.title_ids = []
-        self.creator_ids = []
-        self.publisher_ids = []
-
-
+        self.epubver = epubver
+        if self.epubver == 'A':
+            self.epubver = self.autodetectEPUBVersion()
+            
     def escapeit(self, sval, EXTRAS=None):
         # note, xmlescape and unescape do not work with utf-8 bytestrings
         # so pre-convert to full unicode and then convert back since opf is utf-8 encoded
@@ -82,26 +80,38 @@ class OPFProcessor(object):
         return ures.encode('utf-8')
 
 
-    # Call this function prior to call buildOPFMetadata().
+    # will be invoked inside buildOPFMetadata().
     def getRESCExtraMetaData(self):
         if self.k8resc is not None:
             cover_id = self.k8resc.cover_name
             if cover_id is not None:
                 self.cover_id = cover_id
-            new_metadata = '' 
+            new_metadata = ''
             for taginfo in self.k8resc.extrameta:
                 new_metadata += self.k8resc.taginfo_toxml(taginfo)
             self.resc_metadata = new_metadata
 
 
     def buildOPFMetadata(self, start_tag, has_obfuscated_fonts=False):
-        # Build metadata.
+        # convert from EXTH metadata format to target epub version metadata
+        # epub 3 will ignore <meta name="xxxx" content="yyyy" /> style metatags
+        #    but allows them to be present for backwards compatibility
+        #    instead the new format is
+        #    <meta property="xxxx" id="iiii" ... > property_value</meta>
+        #       and DCMES elements such as:
+        #    <dc:blah id="iiii">value</dc:blah>
+
         metadata = self.metadata
-        #k8resc = self.k8resc
+
         META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'ThumbOffset', 'Fake Cover',
                                                 'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
                                                 'Watermark', 'Clipping Limit', 'Publisher Limit', 'Text to Speech Disabled', 'CDE Type',
                                                 'Updated Title', 'Font Signature (hex)', 'Tamper Proof Keys (hex)',  ]
+
+
+        def createMetaTag(data, property, content):
+            data.append('<meta property="%s">%s</meta>\n' % (property, content))
+        
         def handleTag(data, metadata, key, tag):
             '''
             Format metadata values.
@@ -118,12 +128,14 @@ class OPFProcessor(object):
                     data.append(res)
                 del metadata[key]
 
+        # these are allowed but ignored by epub3
         def handleMetaPairs(data, metadata, key, name):
             if key in metadata.keys():
                 for value in metadata[key]:
                     res = '<meta name="%s" content="%s" />\n' % (name, self.escapeit(value, EXTRA_ENTITIES))
                     data.append(res)
                 del metadata[key]
+
 
         data = []
         data.append(start_tag + '\n')
@@ -167,8 +179,7 @@ class OPFProcessor(object):
         handleTag(data, metadata, 'Description', 'dc:description')
         handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
         handleTag(data, metadata, 'Rights', 'dc:rights')
-        handleTag(data, metadata, 'DictInLanguage', 'DictionaryInLanguage')
-        handleTag(data, metadata, 'DictOutLanguage', 'DictionaryOutLanguage')
+
 
        # page-progression-direction
         if self.k8resc is not None:
@@ -197,23 +208,54 @@ class OPFProcessor(object):
                     data.append('<meta name="cover" content="' + self.cover_id + '" />\n')
                 self.used[self.covername] = 'used'
             del metadata['CoverOffset']
-        i = taglist.find(data, 'meta', 'name', 'output encoding')
-        if i is not None:
-            data[i] = ''
+
         handleMetaPairs(data, metadata, 'Codec', 'output encoding')
         # handle kindlegen specifc tags
+        handleTag(data, metadata, 'DictInLanguage', 'DictionaryInLanguage')
+        handleTag(data, metadata, 'DictOutLanguage', 'DictionaryOutLanguage')
         handleMetaPairs(data, metadata, 'RegionMagnification', 'RegionMagnification')
-        handleMetaPairs(data, metadata, 'fixed-layout', 'fixed-layout')
-        handleMetaPairs(data, metadata, 'original-resolution', 'original-resolution')
-        handleMetaPairs(data, metadata, 'orientation-lock', 'orientation-lock')
         handleMetaPairs(data, metadata, 'book-type', 'book-type')
         handleMetaPairs(data, metadata, 'zero-gutter', 'zero-gutter')
         handleMetaPairs(data, metadata, 'zero-margin', 'zero-margin')
 
-        handleTag(data, metadata, 'Review', 'Review')
-        handleTag(data, metadata, 'Imprint', 'Imprint')
-        handleTag(data, metadata, 'Adult', 'Adult')
-        handleTag(data, metadata, 'DictShortName', 'DictionaryVeryShortName')
+        # now handle fixed layout and convert to epub3 format if needed
+        if 'fixed-layout' in metadata.keys():
+            if self.epubver == "3":
+                fixedlayout = metadata['fixed-layout'][0]
+                content = {'true' : 'pre-paginated'}.get(fixedlayout.lower(), 'reflowable')
+                createMetaTag(data, 'rendition:layout', content)
+            handleMetaPairs(data, metadata, 'fixed-layout', 'fixed-layout')
+        if 'orientation-lock' in metadata.keys():
+            if self.epubver == "3":
+                orientation = metadata['orientation-lock'][0]
+                content = {'none' : 'auto'}.get(orientation.lower(), orientation)
+                createMetaTag(data, 'rendition:orientation', content)
+            handleMetaPairs(data, metadata, 'orientation-lock', 'orientation-lock')
+
+        # FIXME: according to epub3 spec about correspondence with Amazon 
+        # if 'original-resolution' is provided it needs to be converted to 
+        # meta viewport property tag stored in the <head></head> of **each**
+        # xhtml page - so this tag would need to be handled by editing each part
+        # before reaching this routine
+        # we need to add support for this to the k8html routine
+        if False: # if 'original-resolution' in metadata.keys():
+            if self.epubver == "3":
+                resolution = metadata['original-resolution'][0]
+                resolution = resolution.lower()
+                width, height = resolution.split('x')
+                if int(width) > 0 and int(height) > 0:
+                    content = 'width=%s, height=%s' % (width, height)
+                    createMetaTag(data, 'rendition:viewport', viewport)
+        handleMetaPairs(data, metadata, 'original-resolution', 'original-resolution')
+
+        # these are not allowed in epub2 or 3 so convert them to meta name content pairs
+        # perhaps these could better be mapped into the dcterms namespace instead
+        handleMetaPairs(data, metadata, 'Review', 'review')
+        handleMetaPairs(data, metadata, 'Imprint', 'imprint')
+        handleMetaPairs(data, metadata, 'Adult', 'adult')
+        handleMetaPairs(data, metadata, 'DictShortName', 'DictionaryVeryShortName')
+
+        # these are needed by kobo books upon submission but not sure if legal metadata in epub2 or epub3
         if 'Price' in metadata.keys() and 'Currency' in metadata.keys():
             priceList = metadata['Price']
             currencyList = metadata['Currency']
@@ -224,6 +266,9 @@ class OPFProcessor(object):
                     data.append('<SRP Currency="'+currencyList[i]+'">'+priceList[i]+'</SRP>\n')
             del metadata['Price']
             del metadata['Currency']
+
+        # all that remains is extra EXTH info we will store inside a comment inside meta name/content pairs
+        # so it can not impact anything and will be automatically stripped out if found again in a RESC section
         data.append(BEGIN_INFO_ONLY + '\n')
         if 'ThumbOffset' in metadata.keys():
             imageNumber = int(metadata['ThumbOffset'][0])
@@ -237,7 +282,6 @@ class OPFProcessor(object):
             del metadata['ThumbOffset']
         for metaName in META_TAGS:
             if metaName in metadata.keys():
-                # print "in opf processing ", metaName
                 for value in metadata[metaName]:
                     data.append('<meta name="'+metaName+'" content="'+self.escapeit(value, EXTRA_ENTITIES)+'" />\n')
                 del metadata[metaName]
@@ -329,11 +373,10 @@ class OPFProcessor(object):
         # for EPUB2 manifest.
         k8resc = self.k8resc
         cover_id = self.cover_id
-        hasK8RescSpine = k8resc is not None and k8resc.hasSpine
+        hasK8RescSpine = k8resc is not None and k8resc.hasSpine()
         self.ncxname = ncxname
 
         data = []
-        # build manifest
         data.append('<manifest>\n')
         media_map = {
                 '.jpg'  : 'image/jpeg',
@@ -396,7 +439,7 @@ class OPFProcessor(object):
         files = self.files
         k8resc = self.k8resc
         cover_id = self.cover_id
-        hasK8RescSpine = k8resc is not None and k8resc.hasSpine
+        hasK8RescSpine = k8resc is not None and k8resc.hasSpine()
         isEpub3 = False
         if navname is not None:
             isEpub3 = True
@@ -486,7 +529,7 @@ class OPFProcessor(object):
     def buildOPFSpine(self, spinerefs, isNCX):
         # build spine for mobi8
         k8resc = self.k8resc
-        hasK8RescSpine = k8resc is not None and k8resc.hasSpine
+        hasK8RescSpine = k8resc is not None and k8resc.hasSpine()
         data = []
         ppd = ''
         if self.isK8 and self.page_progression_direction is not None:
@@ -501,13 +544,23 @@ class OPFProcessor(object):
         data.append(spine_start_tag)
         if hasK8RescSpine:
             for key in k8resc.spine_order:
-                pp = k8resc.spine_pageprops[key]
-                if pp is not None:
-                    data.append('<itemref idref="%s" properties="%s" />\n' % (k8resc.spine_idrefs[key], pp))
-                else:
-                    data.append('<itemref idref="%s"/>\n' % k8resc.spine_idrefs[key])
+                idref = k8resc.spine_idrefs[key]
+                attribs = k8resc.spine_pageattributes[key]
+                tag = '<itemref idref="%s"' % idref
+                for aname, val in attribs.items():
+                    if val is not None:
+                        tag += ' %s="%s"' % (aname, val)
+                tag += '/>\n'
+                data.append(tag)
         else:
-            for entry in spinerefs:
+            start = 0
+            # special case the created coverpage if need be
+            [key, dir, fname] = self.fileinfo[0]
+            if key is not None and key == "coverpage":
+                entry = spinerefs[start]
+                data.append('<itemref idref="%s" linear="no"/>\n' % entry)
+                start += 1
+            for entry in spinerefs[start:]:
                 data.append('<itemref idref="' + entry + '"/>\n')
         data.append('</spine>\n')
         return data
@@ -546,7 +599,6 @@ class OPFProcessor(object):
     def buildEPUB2OPF(self, has_obfuscated_fonts=False):
         # Build an OPF for EPUB2.
         print "Building an opf for epub2"
-        self.epubver = '2'
         data = []
         data.append('<?xml version="1.0" encoding="utf-8"?>\n')
         data.append('<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid">\n')
@@ -567,25 +619,20 @@ class OPFProcessor(object):
     def buildEPUB3OPF(self, has_obfuscated_fonts=False):
         # Build an OPF for EPUB3.
         print "Building an opf for epub3"
-        self.epubver = '3'
         has_ncx = EPUB3_WITH_NCX
         has_guide = EPUB3_WITH_GUIDE
-        self.sovleRefineID()
         data = []
         data.append('<?xml version="1.0" encoding="utf-8"?>\n')
         data.append('<package version="3.0" xmlns="http://www.idpf.org/2007/opf" prefix="rendition: http://www.idpf.org/vocab/rendition/#" unique-identifier="uid">\n')
-        #metadata_tag = '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">') # XXX: kobo cannot process.
         metadata_tag = '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">'
         opf_metadata = self.buildOPFMetadata(metadata_tag, has_obfuscated_fonts)
-        newmetadata = self.convertAmazonMetadataToEPUB3(opf_metadata)
-        opf_metadata = newmetadata
         data += opf_metadata
         [opf_manifest, spinerefs] = self.buildEPUB3OPFManifest(TOC_NCX, NAVIGATION_DOCUMENT)
         data += opf_manifest
 
         opf_spine = self.buildOPFSpine(spinerefs, has_ncx)
         data += opf_spine
-        #data.append('<tours>\n</tours>\n')
+        # tours are deprecated in epub3: data.append('<tours>\n</tours>\n')
         if has_guide:
             guide ='<guide>\n' + self.guidetext + '</guide>\n'
             data.append(guide)
@@ -593,33 +640,27 @@ class OPFProcessor(object):
         return ''.join(data)
 
 
-    def buildK8OPF(self, has_obfuscated_fonts=False, epubver='2'):
-        # Build an OPF for mobi8.
-        # epubver: specify epub version: 2, 3 or A for automatic
-        if epubver.upper() == 'A':
-            epubver = self.sovleEPUBVersion()
-        if epubver == '2':
+    def buildK8OPF(self, has_obfuscated_fonts=False):
+        if self.epubver == '2':
             return self.buildEPUB2OPF(has_obfuscated_fonts)
-        elif epubver == '3':
-            return self.buildEPUB3OPF(has_obfuscated_fonts)
         else:
-            return self.buildEPUB2OPF(has_obfuscated_fonts)
+            return self.buildEPUB3OPF(has_obfuscated_fonts)
 
 
-    def writeOPF(self, has_obfuscated_fonts=False, epubver='2'):
+    def writeOPF(self, has_obfuscated_fonts=False):
         # write out the metadata as an OEB 1.0 OPF file
         #print "Write opf"
         if self.isK8:
-            return self.writeK8OPF(has_obfuscated_fonts, epubver)
+            return self.writeK8OPF(has_obfuscated_fonts)
         else:
             data = self.buildOPF()
             outopf = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.opf')
             open(pathof(outopf), 'wb').write(data)
 
 
-    def writeK8OPF(self, has_obfuscated_fonts=False, epubver='2'):
+    def writeK8OPF(self, has_obfuscated_fonts=False):
         # Write opf for mobi8
-        data = self.buildK8OPF(has_obfuscated_fonts, epubver)
+        data = self.buildK8OPF(has_obfuscated_fonts)
         outopf = os.path.join(self.files.k8oebps, OPF_NAME)
         open(pathof(outopf), 'wb').write(data)
         return self.BookId
@@ -644,140 +685,79 @@ class OPFProcessor(object):
         return self.navname is not None
 
 
-    def sovleEPUBVersion(self):
-        # Determine EPUB version from metadata and spine.
-        metadata = self.metadata
-        k8resc = self.k8resc
-        self.epubver = '2'
-        if 'true' == metadata.get('fixed-layout', [''])[0].lower():
-            self.epubver = '3'
-        elif 'rtl' in metadata.get(PPD_KEY, [''])[0].lower():
-            self.epubver = '3'
-        elif 'rl' in metadata.get(PWM_KEY, [''])[0].lower():
-            self.epubver = '3'
-        elif k8resc is not None and k8resc.hasSpine():
-            self.epubver = k8resc.getEPUBVersion()
-        return self.epubver
+    def autodetectEPUBVersion(self):
+        # Determine EPUB version from metadata and RESC.
+        epubver = '2'
+        if 'true' == self.metadata.get('fixed-layout', [''])[0].lower():
+            epubver = '3'
+        elif 'rtl' in self.metadata.get(PPD_KEY, [''])[0].lower():
+            epubver = '3'
+        elif 'rl' in self.metadata.get(PWM_KEY, [''])[0].lower():
+            epubver = '3'
+        elif k8resc is not None and k8resc.needEPUB3():
+            epubver = '3'
+        return epubver
 
-
-    def convertAmazonMetadataToEPUB3(self, metadata):
-        # Convert Amazon definded meta to epub3 meta.
-        overwrite_rendition_properties = True
-
-        insert_pos = taglist.find(metadata, BEGIN_INFO_ONLY)
-        if insert_pos is None:
-            insert_pos = taglist.find(metadata, '<!-- The following meta tags are just for information and will be ignored by mobigen/kindlegen.')
-        if insert_pos is None:
-            insert_pos = len(metadata) - 1
-        opf_metadata = metadata[:insert_pos]
-        opf_metadata_tail = metadata[insert_pos:]
-
-        isrc = taglist.find(opf_metadata, 'meta', 'name', 'fixed-layout')
-        if isrc is not None:
-            fixedlayout = taglist.get_attrib(opf_metadata, isrc, 'content')
-            content = {'true' : 'pre-paginated'}.get(fixedlayout.lower(), 'reflowable')
-            idst = taglist.find(opf_metadata, 'meta', 'property', 'rendition:layout')
-            if idst is None:
-                newdata = '<meta property="rendition:layout">' + content + '</meta>\n'
-                opf_metadata.append(newdata)
-            elif overwrite_rendition_properties:
-                newdata = taglist.set_content(opf_metadata, idst, content)
-                opf_metadata[idst] = newdata
-
-        isrc = taglist.find(opf_metadata, 'meta', 'name', 'orientation-lock')
-        if isrc is not None:
-            orientation = taglist.get_attrib(opf_metadata, isrc, 'content')
-            content = {'none' : 'auto'}.get(orientation.lower(), orientation)
-            idst = taglist.find(opf_metadata, 'meta', 'property', 'rendition:orientation')
-            if idst is None:
-                newdata = '<meta property="rendition:orientation">' + content + '</meta>\n'
-                opf_metadata.append(newdata)
-            elif overwrite_rendition_properties:
-                newdata = taglist.set_content(opf_metadata, idst, content)
-                opf_metadata[idst] = newdata
-
-        # Not certain whether corresponded or not.
-        isrc = taglist.find(opf_metadata, 'meta', 'name', 'original-resolution')
-        #if isrc is not None:
-        if False:
-            resolution = taglist.get_attrib(opf_metadata, isrc, 'content')
-            re_resolution = re.compile(r'(?P<width>\d+)\D+(?P<height>\d+)', re.I)
-            mo_resolution = re_resolution.search(resolution)
-            if mo_resolution is not None:
-                width = mo_resolution.group('width')
-                height = mo_resolution.group('height')
-                if int(width) > 0 and int(height) > 0:
-                    viewport = 'width={}, height={}'.format(width, height)
-            idst = taglist.find(opf_metadata, 'meta', 'property', 'rendition:viewport')
-            if idst is None:
-                newdata = '<meta property="rendition:viewport">' + viewport + '</meta>\n'
-                opf_metadata.append(newdata)
-            elif overwrite_rendition_properties:
-                newdata = taglist.set_content(opf_metadata, idst, viewport)
-                opf_metadata[idst] = newdata
-
-        opf_metadata += opf_metadata_tail
-        return opf_metadata
 
 
     # XXX: Under construction.
-    def sovleRefineID(self):
-        metadata = self.metadata
-        dc_title = metadata.get('Title', [])
-        dc_creator = metadata.get('Creator', [])
-        dc_publisher = metadata.get('Publisher', [])
-        fileas_title = metadata.get('Title file-as', [])
-        fileas_creator = metadata.get('Creator file-as', [])
-        fileas_publisher = metadata.get('Publisher file-as', [])
-
-        title_ids = []
-        creator_ids = []
-        publisher_ids = []
-
-        k8resc = self.k8resc
-        if k8resc is not None:
-            refineids = k8resc.metadata.getRefineIds()
-            for id_ in refineids:
-                if 'title' in id_.lower():
-                    title_ids.append(id_)
-            for id_ in refineids:
-                if 'creator' in id_.lower():
-                    creator_ids.append(id_)
-            for id_ in refineids:
-                if 'publisher' in id_.lower():
-                    publisher_ids.append(id_)
-
-        if len(dc_title) == 1:
-            if len(title_ids) == 1 and len(fileas_title) <= 1:
-                pass
-            elif len(title_ids) == 0 and len(fileas_title) == 1:
-                title_ids.append('title')
-            else:
-                title_ids = []
-        else:
-            title_ids = []
-
-        if len(dc_publisher) == 1:
-            if len(publisher_ids) == 1and len(fileas_publisher) <= 1:
-                pass
-            elif len(publisher_ids) == 0 and len(fileas_publisher) == 1:
-                publisher_ids.append('publisher')
-            else:
-                publisher_ids = []
-        else:
-            publisher_ids = []
-
-        if len(dc_creator) == 1:
-            if len(creator_ids) == 1 and len(fileas_creator) <= 1:
-                pass
-            elif len(creator_ids) == 0 and len(fileas_creator) == 1:
-                creator_ids.append('creator')
-            else:
-                creator_ids = []
-        else:
-            creator_ids = []
-
-        self.title_ids = title_ids
-        self.creator_ids = creator_ids
-        self.publisher_ids = publisher_ids
-        return
+    # def sovleRefineID(self):
+    #     metadata = self.metadata
+    #     dc_title = metadata.get('Title', [])
+    #     dc_creator = metadata.get('Creator', [])
+    #     dc_publisher = metadata.get('Publisher', [])
+    #     fileas_title = metadata.get('Title file-as', [])
+    #     fileas_creator = metadata.get('Creator file-as', [])
+    #     fileas_publisher = metadata.get('Publisher file-as', [])
+    #
+    #     title_ids = []
+    #     creator_ids = []
+    #     publisher_ids = []
+    # 
+    #     k8resc = self.k8resc
+    #     if k8resc is not None:
+    #         refineids = k8resc.metadata.getRefineIds()
+    #         for id_ in refineids:
+    #             if 'title' in id_.lower():
+    #                 title_ids.append(id_)
+    #         for id_ in refineids:
+    #             if 'creator' in id_.lower():
+    #                 creator_ids.append(id_)
+    #         for id_ in refineids:
+    #             if 'publisher' in id_.lower():
+    #                 publisher_ids.append(id_)
+    # 
+    #     if len(dc_title) == 1:
+    #         if len(title_ids) == 1 and len(fileas_title) <= 1:
+    #             pass
+    #         elif len(title_ids) == 0 and len(fileas_title) == 1:
+    #             title_ids.append('title')
+    #         else:
+    #             title_ids = []
+    #     else:
+    #         title_ids = []
+    # 
+    #     if len(dc_publisher) == 1:
+    #         if len(publisher_ids) == 1and len(fileas_publisher) <= 1:
+    #             pass
+    #         elif len(publisher_ids) == 0 and len(fileas_publisher) == 1:
+    #             publisher_ids.append('publisher')
+    #         else:
+    #             publisher_ids = []
+    #     else:
+    #         publisher_ids = []
+    # 
+    #     if len(dc_creator) == 1:
+    #         if len(creator_ids) == 1 and len(fileas_creator) <= 1:
+    #             pass
+    #         elif len(creator_ids) == 0 and len(fileas_creator) == 1:
+    #             creator_ids.append('creator')
+    #         else:
+    #             creator_ids = []
+    #     else:
+    #         creator_ids = []
+    # 
+    #     self.title_ids = title_ids
+    #     self.creator_ids = creator_ids
+    #     self.publisher_ids = publisher_ids
+    #     return

@@ -103,6 +103,7 @@
 #  0.72h- updated mobi_header and mobi_k8proc to use the correct fragment and guide terms in place of div and other
 #         to better match the terms that both Calibre and Amazon use internally to their own software
 #  0.72x- very experimental conversion to use new mobi_k8resc.py and some of its associated changes
+#  0.72y- more changes to simplify and integrate in epub3 support in a simpler manner
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -334,20 +335,17 @@ def processkind(i, files, imgnames, sect, data):
 
 
 # spine information from the original content.opf
-def processRESC(i, files, imgnames, sect, data, resc):
-    print "******* RESC **********"
+def processRESC(i, files, imgnames, sect, data, k8resc):
     global DUMP
     if DUMP:
         rescname = "RESC%05d.dat" % i
         print "Extracting Resource: ", rescname
         outrsc = os.path.join(files.outdir, rescname)
         open(pathof(outrsc), 'wb').write(data)
-    # almost all of the following should be moved to mobi_k8resc and not be here
-    # try:
-    if True:
-        # Retrieve a spine and metadata from RESC; link the spine to part in K8Processor.
-        k8resc = K8RESCProcessor(data[16:])
-    else:
+    try:
+        # parse the spine and metadata from RESC
+        k8resc = K8RESCProcessor(data[16:], DUMP)
+    except:
         print "Warning: cannot extract information from RESC."
         k8resc = None
     imgnames.append(None)
@@ -500,16 +498,28 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
     # fileinfo = [skelid|coverpage, dir, name]
     fileinfo = []
     # first create a cover page if none exists
-    if k8resc is not None and CREATE_COVER_PAGE:
+    if CREATE_COVER_PAGE:
         cover = CoverProcessor(files, metadata, imgnames)
         cover_img = cover.getImageName()
+        need_to_create_cover_page = False
         if cover_img is not None:
-            cover_page = cover.getXHTMLName()
-            if "coverpage" in k8resc.spine_idrefs.keys() and k8resc.spine_order[0] == "coverpage":
+            if k8resc is None or not k8resc.hasSpine():
+                part = k8proc.getPart(0)
+                if part.find(cover_img) == -1:
+                    need_to_create_cover_page = True
+            else:
+                if "coverpage" not in k8resc.spine_idrefs.keys():
+                    part = k8proc.getPart(int(k8resc.spine_order[0]))
+                    if part.find(cover_img) == -1:
+                        k8resc.prepend_to_spine("coverpage", "inserted", "no", None)
+                if k8resc.spine_order[0] == "coverpage":
+                    need_to_create_cover_page = True
+            if need_to_create_cover_page:
                 filename = cover.getXHTMLName()
                 fileinfo.append(["coverpage", 'Text', filename])
                 guidetext += cover.guide_toxml()
                 cover.writeXHTML()
+
     n =  k8proc.getNumberOfParts()
     for i in range(n):
         part = k8proc.getPart(i)
@@ -527,8 +537,8 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
             open(pathof(fname),'wb').write(flowpart)
 
     # create the opf
-    opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc)
-    uuid = opf.writeK8OPF(bool(obfuscate_data), epubver)
+    opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc, epubver)
+    uuid = opf.writeK8OPF(bool(obfuscate_data))
 
     if opf.hasNAV():
         # Create a navigation document.
@@ -853,7 +863,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72x preview with epub3 and APNX support"
+    print "kindleunpack v0.72y preview with epub3 suport"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."
