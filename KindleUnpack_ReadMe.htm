@@ -1,4 +1,4 @@
-<html>
+T<html>
 <head>
 <title>KindleUnpack ReadMe</title>
 </head>
@@ -27,23 +27,23 @@ python kindle_unpack.py [-r -s -d -h -i] [-p APNX_FILE] INPUT_FILE OUTPUT_FOLDER
 <p>where you replace:</p>
 <pre>
 
-   INPUT_FILE      - the path to the desired Kindle/MobiPocket ebook
+   INPUT_FILE      - path to the desired Kindle/MobiPocket ebook
 
-   OUTPUT_FOLDER   - the path to folder where the ebook will be unpacked
+   OUTPUT_FOLDER   - path to folder where the ebook will be unpacked
 
 Options:
-    -r              write raw data to the output folder
-    -s              split combination mobis into older mobi and mobi KF8 ebooks
-    -d              dump headers and other debug info to output and extra files
-    -h              print this help message
-    -i              use HDImages to overwrite lower res version if present
-
-   -p APNX_FILE     the path to an apnx file that contains real page numbers associated with an azw3 ebook
-                    Note: many apnx files have arbitrarily assigned page offsets that will confuse KindleUnpack if used
+    -h               print this help message
+    -i               use HDImages to overwrite lower resolution versions, if present
+    -s               split combination mobis into older mobi and mobi KF8 ebooks
+    -p APNX_FILE     path to a .apnx file that contains real page numbers associated with an azw3 ebook (optional)
+                     Note: many apnx files have arbitrarily assigned page offsets that will confuse KindleUnpack if used
+   --epub_version=   specify epub version to unpack to: 2, 3 or A (for automatic), default is 2
+    -r               write raw data to the output folder
+    -d               dump headers and other debug info to output and extra files
 
 </pre>
 
-<p>Please report any bugs or comments/requests our sticky forum on the Mobileread website.  It can be found at http://www.mobileread.com/forums.  Look under E-Book Formats > Mobi > New Kindle/Mobi Decoder: mobiunpack.py.
+<p>Please report any bugs or comments/requests our sticky forum on the Mobileread website.  It can be found at http://www.mobileread.com/forums.  Look under E-Book Formats > Kindle Formats > KindleUnpack (MobiUnpack).
 </p>
 
 <p>License Information</p>

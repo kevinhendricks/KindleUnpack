@@ -104,6 +104,8 @@
 #         to better match the terms that both Calibre and Amazon use internally to their own software
 #  0.72x- very experimental conversion to use new mobi_k8resc.py and some of its associated changes
 #  0.72y- more changes to simplify and integrate in epub3 support in a simpler manner
+#  0.72z- remove redundancy in mobi_opf.py and bug fixes for mobi_k8resc.py
+#  0.73   faster mobi split, numerous bug fixes in mobi_k8proc, mobi_header, mobi_opf, mobi_k8resc, etc
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -342,10 +344,10 @@ def processRESC(i, files, imgnames, sect, data, k8resc):
         print "Extracting Resource: ", rescname
         outrsc = os.path.join(files.outdir, rescname)
         open(pathof(outrsc), 'wb').write(data)
-    try:
+    if True: #try:
         # parse the spine and metadata from RESC
         k8resc = K8RESCProcessor(data[16:], DUMP)
-    except:
+    else: # except:
         print "Warning: cannot extract information from RESC."
         k8resc = None
     imgnames.append(None)
@@ -538,7 +540,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
 
     # create the opf
     opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, pagemapxml, guidetext, k8resc, epubver)
-    uuid = opf.writeK8OPF(bool(obfuscate_data))
+    uuid = opf.writeOPF(bool(obfuscate_data))
 
     if opf.hasNAV():
         # Create a navigation document.
@@ -546,6 +548,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
         nav.writeNAV(ncx_data, guidetext)
 
     # make an epub-like structure of it all
+    print "Creating an epub-like file"
     files.makeEPUB(usedmap, obfuscate_data, uuid)
 
 
@@ -569,9 +572,9 @@ def processMobi7(mh, metadata, sect, files, imgnames):
     # if Dictionary build up the positionMap
     if mh.isDictionary():
         if mh.DictInLanguage():
-            metadata['DictInLanguage'] = mh.DictInLanguage()
+            metadata['DictInLanguage'] = [mh.DictInLanguage()]
         if mh.DictOutLanguage():
-            metadata['DictOutLanguage'] = mh.DictOutLanguage()
+            metadata['DictOutLanguage'] = [mh.DictOutLanguage()]
         positionMap = dictSupport(mh, sect).getPositionMap()
 
     # convert the rawml back to Mobi ml
@@ -851,19 +854,19 @@ def usage(progname):
     print "  %s -r -s -p apnxfile -d -h --epub_version= infile [outdir]" % progname
     print "Options:"
     print "    -h                 print this help message"
-    print "    -i                 use HD Images if present in place of lower res images"
-    print "    -r                 write raw data to the output folder"
+    print "    -i                 use HD Images, if present, to overwrite reduced resolution images"
     print "    -s                 split combination mobis into mobi7 and mobi8 ebooks"
+    print "    -p APNXFILE        path to an .apnx file associated with the azw3 input (optional)"
+    print "    --epub_version=    specify epub version to unpack to:  2, 3 or A (for automatic), default is 2"
     print "    -d                 dump headers and other info to output and extra files"
-    print "    -p apnxfile        apnx file associated with an azw3 infile"
-    print "    --epub_version=    specify epub version: 2, 3 or A for automatic"
+    print "    -r                 write raw data to the output folder"
 
 
 def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "kindleunpack v0.72y preview with epub3 suport"
+    print "KindleUnpack v0.73"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."

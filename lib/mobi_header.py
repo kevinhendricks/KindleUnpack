@@ -41,72 +41,80 @@ def dump_contexth(cpage, extheader):
     if extheader == '':
         return
     id_map_strings = {
-           1 : 'Drm Server Id (1)',
-           2 : 'Drm Commerce Id (2)',
-           3 : 'Drm Ebookbase Book Id(3)',
-           100 : 'Creator_(100)',
-           101 : 'Publisher_(101)',
-           102 : 'Imprint_(102)',
-           103 : 'Description_(103)',
-           104 : 'ISBN_(104)',
-           105 : 'Subject_(105)',
-           106 : 'Published_(106)',
-           107 : 'Review_(107)',
-           108 : 'Contributor_(108)',
-           109 : 'Rights_(109)',
-           110 : 'SubjectCode_(110)',
-           111 : 'Type_(111)',
-           112 : 'Source_(112)',
-           113 : 'ASIN_(113)',
-           114 : 'versionNumber_(114)',
-           117 : 'Adult_(117)',
-           118 : 'Price_(118)',
-           119 : 'Currency_(119)',
-           122 : 'fixed-layout_(122)',
-           123 : 'book-type_(123)',
-           124 : 'orientation-lock_(124)',
-           126 : 'original-resolution_(126)',
-           127 : 'zero-gutter_(127)',
-           128 : 'zero-margin_(128)',
-           129 : 'K8_Masthead/Cover_Image_(129)',
-           132 : 'RegionMagnification_(132)',
-           200 : 'DictShortName_(200)',
-           208 : 'Watermark_(208)',
-           501 : 'cdeType_(501)',
-           502 : 'last_update_time_(502)',
-           503 : 'Updated_Title_(503)',
-           504 : 'ASIN_(504)',
-           524 : 'Language_(524)',
-           525 : 'TextDirection_(525)',
-           528 : 'Unknown_Logical_Value_(528)', # could this be "override-kindle-fonts" ?
-           534 : 'Input_Source_Type_(534)',
-           535 : 'Kindlegen_BuildRev_Number_(535)',
-           536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
-           538 : 'Container_Resolution_(538)',
-           539 : 'Container_Mimetype_(539)',
-           542 : 'Unknown_but_changes_with_file_name_only_(542)',
-           543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+        1 : 'Drm Server Id (1)',
+        2 : 'Drm Commerce Id (2)',
+        3 : 'Drm Ebookbase Book Id(3)',
+        100 : 'Creator_(100)',
+        101 : 'Publisher_(101)',
+        102 : 'Imprint_(102)',
+        103 : 'Description_(103)',
+        104 : 'ISBN_(104)',
+        105 : 'Subject_(105)',
+        106 : 'Published_(106)',
+        107 : 'Review_(107)',
+        108 : 'Contributor_(108)',
+        109 : 'Rights_(109)',
+        110 : 'SubjectCode_(110)',
+        111 : 'Type_(111)',
+        112 : 'Source_(112)',
+        113 : 'ASIN_(113)',
+        114 : 'versionNumber_(114)',
+        117 : 'Adult_(117)',
+        118 : 'Price_(118)',
+        119 : 'Currency_(119)',
+        122 : 'fixed-layout_(122)',
+        123 : 'book-type_(123)',
+        124 : 'orientation-lock_(124)',
+        126 : 'original-resolution_(126)',
+        127 : 'zero-gutter_(127)',
+        128 : 'zero-margin_(128)',
+        129 : 'K8_Masthead/Cover_Image_(129)',
+        132 : 'RegionMagnification_(132)',
+        200 : 'DictShortName_(200)',
+        208 : 'Watermark_(208)',
+        501 : 'cdeType_(501)',
+        502 : 'last_update_time_(502)',
+        503 : 'Updated_Title_(503)',
+        504 : 'ASIN_(504)',
+        508 : 'Unknown_Title_Furigana?_(508)',
+        517 : 'Unknown_Creator_Furigana?_(517)',
+        522 : 'Unknown_Publisher_Furigana?_(522)',
+        524 : 'Language_(524)',
+        525 : 'primary-writing-mode_(525)',
+        526 : 'Unknown_(526)',
+        527 : 'page-progression-direction_(527)',
+        528 : 'override-kindle-fonts_(528)',
+        529 : 'kindlegen_Source-Target_(529)',
+        529 : 'Unknown_(529)',
+        534 : 'Input_Source_Type_(534)',
+        535 : 'Kindlegen_BuildRev_Number_(535)',
+        536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        538 : 'Container_Resolution_(538)',
+        539 : 'Container_Mimetype_(539)',
+        542 : 'Unknown_but_changes_with_file_name_only_(542)',
+        543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+        544 : 'Unknown_(544)',
     }
     id_map_values = {
-           115 : 'sample_(115)',
-           116 : 'StartOffset_(116)',
-           121 : 'K8(121)_Boundary_Section_(121)',
-           125 : 'K8_Count_of_Resources_Fonts_Images_(125)',
-           131 : 'K8_Unidentified_Count_(131)',
-           201 : 'CoverOffset_(201)',
-           202 : 'ThumbOffset_(202)',
-           203 : 'Fake_Cover_(203)',
-           204 : 'Creator_Software_(204)',
-           205 : 'Creator_Major_Version_(205)',
-           206 : 'Creator_Minor_Version_(206)',
-           207 : 'Creator_Build_Number_(207)',
-           401 : 'Clipping_Limit_(401)',
-           402 : 'Publisher_Limit_(402)',
-           404 : 'Text_to_Speech_Disabled_(404)',
+        115 : 'sample_(115)',
+        116 : 'StartOffset_(116)',
+        121 : 'K8(121)_Boundary_Section_(121)',
+        125 : 'K8_Count_of_Resources_Fonts_Images_(125)',
+        131 : 'K8_Unidentified_Count_(131)',
+        201 : 'CoverOffset_(201)',
+        202 : 'ThumbOffset_(202)',
+        203 : 'Fake_Cover_(203)',
+        204 : 'Creator_Software_(204)',
+        205 : 'Creator_Major_Version_(205)',
+        206 : 'Creator_Minor_Version_(206)',
+        207 : 'Creator_Build_Number_(207)',
+        401 : 'Clipping_Limit_(401)',
+        402 : 'Publisher_Limit_(402)',
+        404 : 'Text_to_Speech_Disabled_(404)',
     }
     id_map_hexstrings = {
-           209 : 'Tamper_Proof_Keys_(209_in_hex)',
-           300 : 'Font_Signature_(300_in_hex)',
+        209 : 'Tamper_Proof_Keys_(209_in_hex)',
+        300 : 'Font_Signature_(300_in_hex)',
     }
     _length, num_items = struct.unpack('>LL', extheader[4:12])
     extheader = extheader[12:]
@@ -366,22 +374,23 @@ class MobiHeader:
         501 : 'cdeType',
         502 : 'last_update_time',
         503 : 'Updated_Title',
-        504 : 'ASIN_(504)',
-        508 : 'Title file-as',
-        517 : 'Creator file-as',
-        522 : 'Publisher file-as',
-        524 : 'Language_(524)',
+        504 : 'ASIN_504',
+        508 : 'Unknown_508',
+        517 : 'Unknown_517',
+        522 : 'Unknown_522',
+        524 : 'Language_524',
         525 : 'primary-writing-mode',
         527 : 'page-progression-direction',
-        528 : 'Unknown_Logical_Value_(528)',  # could this be "override-kindle-fonts"?
-        529 : 'kindlegen_Source-Target_(529)',
-        534 : 'kindleget_Input_Source_Type_(534)',
+        528 : 'override-kindle-fonts', 
+        529 : 'kindlegen_Source-Target',
+        534 : 'kindlegen_Input_Source_Type',
         535 : 'kindlegen_BuildRev_Number',
-        536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
-        538 : 'Container_Resolution_(539)',
-        539 : 'Container_Mimetype_(539)',
-        542 : 'Unknown_but_changes_with_file_name_only_(542)',
-        543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+        536 : 'Container_Info', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        538 : 'Container_Resolution',
+        539 : 'Container_Mimetype',
+        542 : 'Unknown_but_changes_with_file_name_only_542',
+        543 : 'Container_id',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+        544 : 'Unknown_544',
  
     }
     id_map_values = {
@@ -601,11 +610,6 @@ class MobiHeader:
                 elif size == 12:
                     value, = struct.unpack('>L',content)
                     print '{0:3d} long {1:<30s} 0x{2:0>8X} ({2:d})'.format(id, exth_name, value)
-                elif size == 16:
-                    hival, = struct.unpack('>L',content[0:4])
-                    loval, = struct.unpack('>L',content[0:4])
-                    value = hival*0x100000000 + loval
-                    print '{0:3d}   LL {1:<30s} 0x{2:0>16X} ({2:d})'.format(id, exth_name, value)
                 else:
                     print '{0: >3d} {1: >4d} {2: <30s} (0x{3:s})'.format(id, contentsize, "Bad size for "+exth_name, content.encode('hex'))
             elif id in MobiHeader.id_map_hexstrings.keys():
@@ -717,7 +721,7 @@ class MobiHeader:
         langcode = struct.unpack('!L', self.header[0x5c:0x60])[0]
         langid = langcode & 0xFF
         sublangid = (langcode >> 10) & 0xFF
-        return [getLanguage(langid, sublangid)]
+        return getLanguage(langid, sublangid)
 
     def DictInLanguage(self):
         if self.isDictionary():
@@ -725,7 +729,7 @@ class MobiHeader:
             langid = langcode & 0xFF
             sublangid = (langcode >> 10) & 0xFF
             if langid != 0:
-                return [getLanguage(langid, sublangid)]
+                return getLanguage(langid, sublangid)
         return False
 
     def DictOutLanguage(self):
@@ -734,7 +738,7 @@ class MobiHeader:
             langid = langcode & 0xFF
             sublangid = (langcode >> 10) & 0xFF
             if langid != 0:
-                return [getLanguage(langid, sublangid)]
+                return getLanguage(langid, sublangid)
         return False
 
     def getRawML(self):
@@ -783,6 +787,8 @@ class MobiHeader:
         return rawML
 
 
+    # all metadata is stored in a dictionary with key and returns a *list* of values
+    # a list is used to allow for multiple creators, multiple contributors, etc
     def parseMetaData(self):
         def addValue(name, value):
             if name not in self.metadata:
@@ -812,8 +818,11 @@ class MobiHeader:
                         addValue(name, str(value))
                     elif size == 12:
                         value, = struct.unpack('>L',content)
-                        addValue(name, str(value))
+                        # handle special case of missing CoverOffset
+                        if id != 201 or value != 0xffffffff:
+                            addValue(name, str(value))
                     else:
+                        print "Warning: Bad key, size, value combination detected in EXTH ", id, size, content.encode('hex')
                         addValue(name, content.encode('hex'))
                 elif id in MobiHeader.id_map_hexstrings.keys():
                     name = MobiHeader.id_map_hexstrings[id]
@@ -823,8 +832,8 @@ class MobiHeader:
                     addValue(name, content.encode('hex'))
                 pos += size
 
-        # add the basics to the metadata
-        self.metadata['Language'] = self.Language()
+        # add the basics to the metadata each as a list element
+        self.metadata['Language'] = [self.Language()]
         self.metadata['Title'] = [unicode(self.title, self.codec).encode("utf-8")]
         self.metadata['Codec'] = [self.codec]
         self.metadata['UniqueID'] = [str(self.unique_id)]
