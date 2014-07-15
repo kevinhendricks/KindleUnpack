@@ -377,12 +377,12 @@ class K8Processor:
         name_pattern = re.compile(r'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
         for tag in reverse_tag_iter(textblock):
             # any ids in the body should default to top of file
-            if tag[0:6] != '<body ':
+            if tag[0:6] == '<body ':
+                return ''
+            if tag[0:6] != '<meta ':
                 m = id_pattern.match(tag) or name_pattern.match(tag)
                 if m is not None:
                     return m.group(1)
-        if self.DEBUG:
-            print "Found no id in the textblock, link must be to top of file"
         return ''
 
 
@@ -466,12 +466,12 @@ class K8Processor:
         name_pattern = re.compile(r'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
         for tag in reverse_tag_iter(textblock):
             # any ids in the body should default to top of file
-            if tag[0:6] != '<body ':
+            if tag[0:6] == '<body ':
+                return ''
+            if tag[0:6] != '<meta ':
                 m = id_pattern.match(tag) or name_pattern.match(tag)
                 if m is not None:
                     return m.group(1)
-        if self.DEBUG:
-            print "Found no id in the textblock, link must be to top of file"
         return ''
 
 

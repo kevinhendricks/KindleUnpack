@@ -61,8 +61,34 @@ def readsection(datain,secno):
     return datain[secstart:secend]
 
 def writesection(datain,secno,secdata): # overwrite, accounting for different length
-    dataout = deletesectionrange(datain,secno, secno)
-    return insertsection(dataout, secno, secdata)
+    #dataout = deletesectionrange(datain,secno, secno)
+    #return insertsection(dataout, secno, secdata)
+    datalst = []
+    nsec = getint(datain,number_of_pdb_records,'H')
+    zerosecstart,zerosecend = getsecaddr(datain,0)
+    secstart,secend = getsecaddr(datain,secno)
+    dif = len(secdata) - (secend - secstart)
+    datalst.append(datain[:unique_id_seed])
+    datalst.append(struct.pack('>L',2*nsec+1))
+    datalst.append(datain[unique_id_seed+4:number_of_pdb_records])
+    datalst.append(struct.pack('>H',nsec))
+    newstart = zerosecstart
+    for i in range(0,secno):
+        ofs, flgval = struct.unpack_from('>2L',datain,first_pdb_record+i*8)
+        datalst.append(struct.pack('>L',ofs) + struct.pack('>L', flgval))
+    datalst.append(struct.pack('>L', secstart) + struct.pack('>L', (2*secno)))
+    for i in range(secno+1,nsec):
+        ofs, flgval = struct.unpack_from('>2L',datain,first_pdb_record+i*8)
+        ofs = ofs + dif
+        datalst.append(struct.pack('>L',ofs) + struct.pack('>L',flgval))
+    lpad = newstart - (first_pdb_record + 8*nsec)
+    if lpad > 0:
+        datalst.append('\0' * lpad)
+    datalst.append(datain[zerosecstart:secstart])
+    datalst.append(secdata)
+    datalst.append(datain[secend:])
+    dataout = "".join(datalst)
+    return dataout
 
 def nullsection(datain,secno): # make it zero-length without deleting it
     datalst = []
@@ -150,9 +176,50 @@ def insertsection(datain,secno,secdata): # insert a new section
 
 def insertsectionrange(sectionsource,firstsec,lastsec,sectiontarget,targetsec): # insert a range of sections
     #print "inserting secno" , firstsec,  "to", lastsec, "into" ,targetsec, "sections"
-    dataout = sectiontarget
-    for idx in range(lastsec,firstsec-1,-1):
-        dataout = insertsection(dataout,targetsec,readsection(sectionsource,idx))
+    #dataout = sectiontarget
+    #for idx in range(lastsec,firstsec-1,-1):
+    #    dataout = insertsection(dataout,targetsec,readsection(sectionsource,idx))
+    #return dataout
+    datalst = []
+    nsec = getint(sectiontarget,number_of_pdb_records,'H')
+    zerosecstart, zerosecend = getsecaddr(sectiontarget,0)
+    insstart, nul = getsecaddr(sectiontarget,targetsec)
+    nins = lastsec - firstsec + 1
+    srcstart, nul = getsecaddr(sectionsource,firstsec)
+    nul, srcend = getsecaddr(sectionsource,lastsec)
+    newstart = zerosecstart + 8*nins
+
+    datalst.append(sectiontarget[:unique_id_seed])
+    datalst.append(struct.pack('>L',2*(nsec+nins)+1))
+    datalst.append(sectiontarget[unique_id_seed+4:number_of_pdb_records])
+    datalst.append(struct.pack('>H',nsec+nins))
+    for i in range(0,targetsec):
+        ofs, flgval = struct.unpack_from('>2L',sectiontarget,first_pdb_record+i*8)
+        ofsnew = ofs + 8*nins
+        flgvalnew = flgval
+        datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L', flgvalnew))
+        #print ofsnew, flgvalnew, ofs, flgval
+    srcstart0, nul = getsecaddr(sectionsource,firstsec)
+    for i in range(nins):
+        isrcstart, nul = getsecaddr(sectionsource,firstsec+i)
+        ofsnew = insstart + (isrcstart-srcstart0) + 8*nins
+        flgvalnew = 2*(targetsec+i)
+        datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L', flgvalnew))
+        #print ofsnew, flgvalnew
+    dif = srcend - srcstart
+    for i in range(targetsec,nsec):
+        ofs, flgval = struct.unpack_from('>2L',sectiontarget,first_pdb_record+i*8)
+        ofsnew = ofs + dif + 8*nins
+        flgvalnew = 2*(i+nins)
+        datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L',flgvalnew))
+        #print ofsnew, flgvalnew, ofs, flgval
+    lpad = newstart - (first_pdb_record + 8*(nsec + nins))
+    if lpad > 0:
+        datalst.append('\0' * lpad)
+    datalst.append(sectiontarget[zerosecstart:insstart])
+    datalst.append(sectionsource[srcstart:srcend])
+    datalst.append(sectiontarget[insstart:])
+    dataout = "".join(datalst)
     return dataout
 
 def get_exth_params(rec0):
@@ -298,7 +365,7 @@ class mobi_split:
                 if n > 0 and n < lastimage:
                     lastimage = n-1
         print "First Image, last Image", firstimage,lastimage
-        
+
         # Try to null out FONT and RES, but leave the (empty) PDB record so image refs remain valid
         for i in range(firstimage,lastimage):
             imgsec = readsection(self.result_file7,i)

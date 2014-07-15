@@ -303,16 +303,27 @@ class HdrParser:
                 132 : 'RegionMagnification_(132)',
                 200 : 'DictShortName_(200)',
                 208 : 'Watermark_(208)',
-                501 : 'CDE_Type_(501)',
+                501 : 'cdeType_(501)',
                 502 : 'last_update_time_(502)',
                 503 : 'Updated_Title_(503)',
                 504 : 'ASIN_(504)',
+                508 : 'Unknown_Title_Furigana?_(508)',
+                517 : 'Unknown_Creator_Furigana?_(517)',
+                522 : 'Unknown_Publisher_Furigana?_(522)',
                 524 : 'Language_(524)',
-                525 : 'TextDirection_(525)',
-                528 : 'Unknown_Logical_Value_(528)',
+                525 : 'primary-writing-mode_(525)',
+                526 : 'Unknown_(526)',
+                527 : 'page-progression-direction_(527)',
+                528 : 'override-kindle-fonts_(528)',
+                529 : 'kindlegen_Source-Target_(529)',
+                534 : 'Input_Source_Type_(534)',
                 535 : 'Kindlegen_BuildRev_Number_(535)',
-                536 : 'Unknown_(536)',
-                542 : 'Unknown_(542)',
+                536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+                538 : 'Container_Resolution_(538)',
+                539 : 'Container_Mimetype_(539)',
+                542 : 'Unknown_but_changes_with_file_name_only_(542)',
+                543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER HD_CONTAINER
+                544 : 'Unknown_(544)',
         }
         id_map_values = {
                 115 : 'sample_(115)',
@@ -417,19 +428,27 @@ def dump_contexth(cpage, extheader):
            132 : 'RegionMagnification_(132)',
            200 : 'DictShortName_(200)',
            208 : 'Watermark_(208)',
-           501 : 'CDE_Type_(501)',
+           501 : 'cdeType_(501)',
            502 : 'last_update_time_(502)',
            503 : 'Updated_Title_(503)',
            504 : 'ASIN_(504)',
+           508 : 'Unknown_Title_Furigana?_(508)',
+           517 : 'Unknown_Creator_Furigana?_(517)',
+           522 : 'Unknown_Publisher_Furigana?_(522)',
            524 : 'Language_(524)',
-           525 : 'TextDirection_(525)',
-           528 : 'Unknown_Logical_Value_(528)',
+           525 : 'primary-writing-mode_(525)',
+           526 : 'Unknown_(526)',
+           527 : 'page-progression-direction_(527)',
+           528 : 'override-kindle_fonts_(528)',
+           529 : 'Unknown_(529)',
+           534 : 'Input_Source_Type_(534)',
            535 : 'Kindlegen_BuildRev_Number_(535)',
-           536 : 'Unknown_(536)',
-           538 : 'Image_Size_(538)',
-           539 : 'Mimetype_(539)',
-           542 : 'Unknown_(542)',
-           543 : 'Unknown_(543)',
+           536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+           538 : 'Container_Resolution_(538)',
+           539 : 'Container_Mimetype_(539)',
+           542 : 'Unknown_but_changes_with_filename_only_(542)',
+           543 : 'Container_id_(543)',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
+           544 : 'Unknown_(544)',
     }
     id_map_values = {
            115 : 'sample_(115)',
@@ -498,7 +517,7 @@ def usage(progname):
 
 
 def main(argv=sys.argv):
-    print "DumpMobiHeader v014"
+    print "DumpMobiHeader v018"
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")

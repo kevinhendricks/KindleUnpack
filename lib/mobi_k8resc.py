@@ -90,7 +90,7 @@ class K8RESCProcessor(object):
                 print "   Parsing RESC: ", prefix, tname, tattr, tcontent
             if tname == "package":
                 self.package_ver = tattr.get("version", "2.0")
-                package_prefix = taggtr.get("prefix",'')
+                package_prefix = tattr.get("prefix",'')
                 if self.package_ver.startswith("3") or package_prefix.startswith("rendition"):
                     self.need3 = True
             if tname == "spine":
@@ -210,7 +210,7 @@ class K8RESCProcessor(object):
         res.append('<' + tname)
         if tattr is not None:
             for key in tattr.keys():
-                res.append(' "' + key + '"="'+tattr[key]+'"' )
+                res.append(' ' + key + '="'+tattr[key]+'"' )
         if tcontent is not None:
             res.append('>' + tcontent + '</' + tname + '>\n')
         else:
