@@ -9,6 +9,8 @@ iswindows = sys.platform.startswith('win')
 
 # force string to be utf-8 encoded whether unicode or bytestring
 def utf8_str(p, enc='utf-8'):
+    if p is None:
+        return None
     if isinstance(p, unicode):
         return p.encode('utf-8')
     if enc != 'utf-8':

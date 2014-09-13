@@ -71,7 +71,6 @@ def dump_contexth(cpage, extheader):
         129 : 'K8_Masthead/Cover_Image_(129)',
         132 : 'RegionMagnification_(132)',
         200 : 'DictShortName_(200)',
-        208 : 'Watermark_(208)',
         501 : 'cdeType_(501)',
         502 : 'last_update_time_(502)',
         503 : 'Updated_Title_(503)',
@@ -113,6 +112,7 @@ def dump_contexth(cpage, extheader):
         404 : 'Text_to_Speech_Disabled_(404)',
     }
     id_map_hexstrings = {
+        208 : 'Watermark_(208_in_hex)',
         209 : 'Tamper_Proof_Keys_(209_in_hex)',
         300 : 'Font_Signature_(300_in_hex)',
     }
@@ -370,7 +370,6 @@ class MobiHeader:
         129 : 'K8(129)_Masthead/Cover_Image',
         132 : 'RegionMagnification',
         200 : 'DictShortName',
-        208 : 'Watermark',
         501 : 'cdeType',
         502 : 'last_update_time',
         503 : 'Updated_Title',
@@ -412,6 +411,7 @@ class MobiHeader:
         406 : 'Rental_Indicator',
     }
     id_map_hexstrings = {
+        208 : 'Watermark (hex)',
         209 : 'Tamper Proof Keys (hex)',
         300 : 'Font Signature (hex)',
         403 : 'Unknown_(403) (hex)',

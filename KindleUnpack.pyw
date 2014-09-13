@@ -147,7 +147,7 @@ class MainDialog(Tkinter.Frame):
         Tkinter.Label(self, text='ePub Output Type:').grid(row=9, sticky=Tkconstants.E)
         self.epubver_val = Tkinter.StringVar()
         self.epubver = ttk.Combobox(self, textvariable=self.epubver_val, state='readonly')
-        self.epubver['values'] = ('ePub 2', 'ePub 3', 'Auto-detect')
+        self.epubver['values'] = ('ePub 2', 'ePub 3', 'Auto-detect', 'Force ePub 2')
         self.epubver.current(0)
         if self.prefs['epubver'] and PERSISTENT_PREFS:
             self.epubver.current(self.prefs['epubver'])
@@ -329,8 +329,10 @@ class MainDialog(Tkinter.Frame):
             epubversion = '2'
         elif self.epubver.current() == 1:
             epubversion = '3'
-        else:
+        elif self.epubver.current() == 2:
             epubversion = 'A'
+        else:
+            epubversion = 'F'
         log += 'Epub Output Type Set To: {0}\n'.format(self.epubver_val.get())
         if self.hdvar.get():
             use_hd = True
