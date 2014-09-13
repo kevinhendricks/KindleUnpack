@@ -5,17 +5,99 @@ DEBUG_DICT = False
 
 import sys
 import array, struct, os, re, imghdr
-
+import codecs
+import unicodedata
 from mobi_index import getVariableWidthValue, readTagSection, countSetBits, getTagMap
 from mobi_utils import toHex, toBin, getLanguage
 
-class dictSupport:
+
+class InflectionData(object):
+    def __init__(self, infldatas):
+        self.infldatas = infldatas
+        self.starts = []
+        self.counts = []
+        for idata in self.infldatas:
+            start, = struct.unpack_from('>L', idata, 0x14)
+            count, = struct.unpack_from('>L', idata, 0x18)
+            self.starts.append(start)
+            self.counts.append(count)
+
+    def lookup(self, lookupvalue):
+        i = 0
+        rvalue = lookupvalue
+        while rvalue >= self.counts[i]:
+            rvalue = rvalue - self.counts[i]
+            i += 1
+            if i == len(self.counts):
+                print "Error: Problem with multiple inflections data sections"
+                return value, self.starts[0], self.counts[0], self.infldatas[0]
+        return rvalue, self.starts[i], self.counts[i], self.infldatas[i]
+
+    def offsets(self, value):
+        rvalue, start, count, data = self.lookup(value)
+        offset, = struct.unpack_from('>H', data, start + 4 + (2 * rvalue))
+        if rvalue + 1 < count:
+            nextOffset, = struct.unpack_from('>H',data, start + 4 + (2 * (rvalue + 1)))
+        else:
+            nextOffset = None
+        return offset, nextOffset, data
+
+
+
+class dictSupport(object):
     def __init__(self, mh, sect):
         self.mh = mh
         self.header = mh.header
         self.sect = sect
         self.metaOrthIndex = mh.metaOrthIndex
         self.metaInflIndex = mh.metaInflIndex
+
+    def parseHeader(self, data):
+        "read INDX header"
+        if not data[:4] == 'INDX':
+            print "Warning: index section is not INDX"
+            return False
+        words = (
+                'len', 'nul1', 'type', 'gen', 'start', 'count', 'code',
+                'lng', 'total', 'ordt', 'ligt', 'nligt', 'nctoc'
+        )
+        num = len(words)
+        values = struct.unpack('>%dL' % num, data[4:4*(num+1)])
+        header = {}
+        for n in range(num):
+            header[words[n]] = values[n]
+
+        ordt1 = None
+        ordt2 = None
+
+        otype, oentries, op1, op2, otagx  = struct.unpack_from('>LLLLL',data, 0xa4)
+        header['otype'] = otype
+        header['oentries'] = oentries
+
+        if DEBUG_DICT:
+            print "otype %d, oentries %d, op1 %d, op2 %d, otagx %d" % (otype, oentries, op1, op2, otagx)
+
+        if  header['code'] == 0xfdea or oentries > 0:
+            # some dictionaries seem to be codepage 65002 (0xFDEA) which seems
+            # to be some sort of strange EBCDIC utf-8 or 16 encoded strings
+            # So we need to look for them and store them away to process leading text
+            # ORDT1 has 1 byte long entries, ORDT2 has 2 byte long entries
+            # we only ever seem to use the second but ...
+            #
+            # if otype = 0, ORDT table uses 16 bit values as offsets into the table
+            # if otype = 1, ORDT table uses 8 bit values as offsets inot the table 
+
+            assert(data[op1:op1+4] == b'ORDT')
+            assert(data[op2:op2+4] == b'ORDT')
+            ordt1 = struct.unpack_from('>%dB' % oentries, data, op1+4)
+            ordt2 = struct.unpack_from('>%dH' % oentries, data, op2+4)
+
+        if DEBUG_DICT:
+            print "parsed INDX header:"
+            for key in header:
+                print key, "%x" % header[key],
+            print "\n"
+        return header, ordt1, ordt2
 
     def getPositionMap (self):
         header = self.header
@@ -33,13 +115,18 @@ class dictSupport:
                 decodeInflection = False
             else:
                 metaInflIndexData = sect.loadSection(metaInflIndex)
-                metaIndexCount, = struct.unpack_from('>L', metaInflIndexData, 0x18)
-                if metaIndexCount != 1:
-                    print "Error: Dictionary contains multiple inflection index sections, which is not yet supported"
-                    decodeInflection = False
-                inflIndexData = sect.loadSection(metaInflIndex + 1)
+
+                print "\nParsing metaInflIndexData"
+                midxhdr, mhordt1, mhordt2 = self.parseHeader(metaInflIndexData)
+
+                metaIndexCount = midxhdr['count']
+                idatas = []
+                for j in range(metaIndexCount):
+                    idatas.append(sect.loadSection(metaInflIndex + 1 + j))
+                dinfl = InflectionData(idatas)
+                
                 inflNameData = sect.loadSection(metaInflIndex + 1 + metaIndexCount)
-                tagSectionStart, = struct.unpack_from('>L', metaInflIndexData, 0x04)
+                tagSectionStart = midxhdr['len']
                 inflectionControlByteCount, inflectionTagTable = readTagSection(tagSectionStart, metaInflIndexData)
                 if DEBUG_DICT:
                     print "inflectionTagTable: %s" % inflectionTagTable
@@ -48,12 +135,18 @@ class dictSupport:
                     decodeInflection = False
 
             data = sect.loadSection(metaOrthIndex)
-            tagSectionStart, = struct.unpack_from('>L', data, 0x04)
+
+            print "\nParsing metaOrthIndex"
+            idxhdr, hordt1, hordt2 = self.parseHeader(data)
+
+            tagSectionStart = idxhdr['len']
             controlByteCount, tagTable = readTagSection(tagSectionStart, data)
-            orthIndexCount, = struct.unpack_from('>L', data, 0x18)
+            orthIndexCount = idxhdr['count']
             print "orthIndexCount is", orthIndexCount
             if DEBUG_DICT:
                 print "orthTagTable: %s" % tagTable
+            if hordt2 is not None:
+                print "orth entry uses ordt2 lookup table of type ", idxhdr['otype']
             hasEntryLength = self.hasTag(tagTable, 0x02)
             if not hasEntryLength:
                 print "Info: Index doesn't contain entry length tags"
@@ -61,24 +154,43 @@ class dictSupport:
             print "Read dictionary index data"
             for i in range(metaOrthIndex + 1, metaOrthIndex + 1 + orthIndexCount):
                 data = sect.loadSection(i)
-                idxtPos, = struct.unpack_from('>L', data, 0x14)
-                entryCount, = struct.unpack_from('>L', data, 0x18)
+                hdrinfo, ordt1, ordt2 = self.parseHeader(data)
+                idxtPos = hdrinfo['start']
+                entryCount = hdrinfo['count']
                 idxPositions = []
                 for j in range(entryCount):
                     pos, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * j))
                     idxPositions.append(pos)
                 # The last entry ends before the IDXT tag (but there might be zero fill bytes we need to ignore!)
                 idxPositions.append(idxtPos)
-
                 for j in range(entryCount):
                     startPos = idxPositions[j]
                     endPos = idxPositions[j+1]
                     textLength = ord(data[startPos])
                     text = data[startPos+1:startPos+1+textLength]
+                    if hordt2 is not None:
+                        utext = u""
+                        if idxhdr['otype'] == 0:
+                            pattern = '>H'
+                            inc = 2
+                        else:
+                            pattern = '>B'
+                            inc = 1
+                        pos = 0
+                        while pos < textLength:
+                            off, = struct.unpack_from(pattern, text, pos)
+                            if off < len(hordt2):
+                                utext += unichr(hordt2[off])
+                            else:
+                                utext += unichr(off)
+                            pos += inc
+                        text = utext.encode('utf-8')
+
                     tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     if 0x01 in tagMap:
                         if decodeInflection and 0x2a in tagMap:
-                            inflectionGroups = self.getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable, inflIndexData, inflNameData, tagMap[0x2a])
+                            inflectionGroups = self.getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable, 
+                                                                        dinfl, inflNameData, tagMap[0x2a])
                         else:
                             inflectionGroups = ""
                         assert len(tagMap[0x01]) == 1
@@ -118,27 +230,23 @@ class dictSupport:
                 return True
         return False
 
-    def getInflectionGroups(self, mainEntry, controlByteCount, tagTable, data, inflectionNames, groupList):
+
+
+    def getInflectionGroups(self, mainEntry, controlByteCount, tagTable, dinfl, inflectionNames, groupList):
         '''
         Create string which contains the inflection groups with inflection rules as mobipocket tags.
 
         @param mainEntry: The word to inflect.
         @param controlByteCount: The number of control bytes.
         @param tagTable: The tag table.
-        @param data: The inflection index data.
+        @param data: The Inflection data object to properly select the right inflection data section to use
         @param inflectionNames: The inflection rule name data.
         @param groupList: The list of inflection groups to process.
         @return: String with inflection groups and rules or empty string if required tags are not available.
         '''
         result = ""
-        idxtPos, = struct.unpack_from('>L', data, 0x14)
-        entryCount, = struct.unpack_from('>L', data, 0x18)
         for value in groupList:
-            offset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * value))
-            if value + 1 < entryCount:
-                nextOffset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * (value + 1)))
-            else:
-                nextOffset = None
+            offset, nextOffset, data = dinfl.offsets(value)
 
             # First byte seems to be always 0x00 and must be skipped.
             assert ord(data[offset]) == 0x00
@@ -155,14 +263,16 @@ class dictSupport:
             result += "<idx:infl>"
 
             for i in range(len(tagMap[0x05])):
+
                 # Get name of inflection rule.
                 value = tagMap[0x05][i]
                 consumed, textLength = getVariableWidthValue(inflectionNames, value)
                 inflectionName = inflectionNames[value+consumed:value+consumed+textLength]
 
-                # Get and apply inflection rule.
+                # Get and apply inflection rule across possibly multiple inflection data sections
                 value = tagMap[0x1a][i]
-                offset, = struct.unpack_from('>H', data, idxtPos + 4 + (2 * value))
+                rvalue, start, count, data = dinfl.lookup(value)
+                offset, = struct.unpack_from('>H', data, start + 4 + (2 * rvalue))
                 textLength = ord(data[offset])
                 inflection = self.applyInflectionRule(mainEntry, data, offset+1, offset+1+textLength)
                 if inflection is not None:
@@ -249,6 +359,7 @@ class dictSupport:
                 # Delete at word start
                 if mode not in [0x01, 0x04]:
                     position = 0
+                # Delete at word start
                 mode = byte
             else:
                 print "Error: Inflection rule mode %x is not implemented" % byte

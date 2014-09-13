@@ -19,9 +19,8 @@ import sys, os, struct, re
 from path import pathof
 
 class NAVProcessor(object):
-    def __init__(self, files, metadata):
+    def __init__(self, files):
         self.files = files
-        self.metadata = metadata
         self.navname = NAVIGATION_FINENAME
 
     def buildLandmarks(self, guidetext):
@@ -148,14 +147,10 @@ class NAVProcessor(object):
             print "Warning (in buildTOC): different number of entries in NCX", len(indx_data), num
         return header + data + footer
 
-    def buildNAV(self, ncx_data, guidetext=None):
+    def buildNAV(self, ncx_data, guidetext, title, lang):
         print "Building Navigation Document."
-        lang = self.metadata.get('Language', ['en'])[0]
         if FORCE_DEFAULT_TITLE:
             title = DEFAULT_TITLE
-        else:
-            title = self.metadata.get('Title', [DEFAULT_TITLE])[0]
-
         nav_header = ''
         nav_header +='<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>'
         nav_header += '<html xmlns="http://www.w3.org/1999/xhtml"'
@@ -179,9 +174,9 @@ class NAVProcessor(object):
     def getNAVName(self):
         return self.navname
 
-    def writeNAV(self, ncx_data, guidetext=None):
+    def writeNAV(self, ncx_data, guidetext, metadata):
         # build the xhtml
         #print "Write Navigation Document."
-        xhtml = self.buildNAV(ncx_data, guidetext)
+        xhtml = self.buildNAV(ncx_data, guidetext, metadata.get('Title')[0], metadata.get('Language')[0])
         fname = os.path.join(self.files.k8text, self.navname)
         open(pathof(fname), 'wb').write(xhtml)

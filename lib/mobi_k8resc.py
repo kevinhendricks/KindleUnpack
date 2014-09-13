@@ -9,6 +9,7 @@ _OPF_PARENT_TAGS = ['xml', 'package', 'metadata', 'dc-metadata', 'x-metadata', '
 class K8RESCProcessor(object):
 
     def __init__(self, data, debug = False):
+        self._debug = debug
         self.resc = None
         self.opos = 0
         self.extrameta = []
@@ -17,30 +18,38 @@ class K8RESCProcessor(object):
         self.spine_order = []
         self.spine_pageattributes = {}
         self.spine_ppd = None
-        # FIXME: if epubver = '2' but we need 3, we should attempt to remove epub3 features where we can
+        # need3 indicate the book has fields which require epub3.
+        # but the estimation of the source epub version from the fields is difficult.
         self.need3 = False
-        self._debug = debug
         self.package_ver = None
-        self.uses_epub3 = False
-        m_header = re.match(r'^\w+=(\w+)\&\w+=(\d+)&\w+=(\d+)',data)
-        self.resc_header = m_header.group()
-        resc_size = fromBase32(m_header.group(1))
-        self.resc_version = int(m_header.group(2))
-        self.resc_type = int(m_header.group(3))
-        resc_rawbytes = len(data) - m_header.end()
+        self.extra_metadata = []
+        self.refines_metadata = []
+        self.extra_attributes = []
+        # get header
+        start_pos = data.find('<')
+        self.resc_header = data[:start_pos]
+        # get resc data length
+        start = self.resc_header.find('=') + 1
+        end = self.resc_header.find('&', start)
+        resc_size = 0
+        if end > 0:
+            resc_size = fromBase32(self.resc_header[start:end])
+        resc_rawbytes = len(data) - start_pos
         if resc_rawbytes == resc_size:
             self.resc_length = resc_size
         else:
             # Most RESC has a nul string at its tail but some do not.
-            end_pos = data.find('\x00', m_header.end())
+            end_pos = data.find('\x00', start_pos)
             if end_pos < 0:
                 self.resc_length = resc_rawbytes
             else:
-                self.resc_length = end_pos - m_header.end()
+                self.resc_length = end_pos - start_pos
         if self.resc_length != resc_size:
             print "Warning: RESC section length({:d}bytes) does not match its size({:d}bytes).".format(self.resc_length, resc_size)
-        self.resc = data[m_header.end():m_header.end()+self.resc_length]
+        # now handle RESC
+        self.resc = data[start_pos:start_pos+self.resc_length]
         self.parseData()
+
 
     def prepend_to_spine(self, key, idref, linear, properties):
         self.spine_order = [key] + self.spine_order
@@ -223,3 +232,24 @@ class K8RESCProcessor(object):
 
     def needEPUB3(self):
         return self.need3
+
+    def hasRefines(self):
+        for [tname, tattr, tcontent] in self.extrameta:
+            if 'refines' in tattr.keys():
+                return True
+        return False
+
+
+    def createMetadata(self, epubver):
+        for taginfo in self.extrameta:
+            tname, tattr, tcontent = taginfo
+            if 'refines' in tattr.keys():
+                if epubver == 'F' and 'property' in tattr:
+                    attr = ' id="%s" opf:%s="%s"\n' % (tattr['refines'], tattr['property'], tcontent)
+                    self.extra_attributes.append(attr)
+                else:
+                    tag = self.taginfo_toxml(taginfo)
+                    self.refines_metadata.append(tag)
+            else:
+                tag = self.taginfo_toxml(taginfo)
+                self.extra_metadata.append(tag)

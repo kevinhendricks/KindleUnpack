@@ -90,12 +90,12 @@ class ncxExtract:
         return indx_data
 
 
-    def buildNCX(self, htmlfile, title, ident):
+    def buildNCX(self, htmlfile, title, ident, lang):
         indx_data = self.indx_data
 
         ncx_header = \
 '''<?xml version='1.0' encoding='utf-8'?>
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="%s">
 <head>
 <meta content="%s" name="dtb:uid"/>
 <meta content="%d" name="dtb:depth"/>
@@ -158,7 +158,7 @@ class ncxExtract:
             return xml, max_lvl, num
 
         body, max_lvl, num = recursINDX()
-        header = ncx_header % (ident, max_lvl + 1, title)
+        header = ncx_header % (lang, ident, max_lvl + 1, title)
         ncx =  header + body + ncx_footer
         if not len(indx_data) == num:
             print "Warning: different number of entries in NCX", len(indx_data), num
@@ -170,16 +170,16 @@ class ncxExtract:
         print "Write ncx"
         htmlname = os.path.basename(self.files.outbase)
         htmlname += '.html'
-        xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0])
+        xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0], metadata.get('Language')[0])
         #write the ncx file
         ncxname = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.ncx')
         open(pathof(ncxname), 'wb').write(xml)
 
 
-    def buildK8NCX(self, indx_data, title, ident):
+    def buildK8NCX(self, indx_data, title, ident, lang):
         ncx_header = \
 '''<?xml version='1.0' encoding='utf-8'?>
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="%s">
 <head>
 <meta content="%s" name="dtb:uid"/>
 <meta content="%d" name="dtb:depth"/>
@@ -247,7 +247,7 @@ class ncxExtract:
             return xml, max_lvl, num
 
         body, max_lvl, num = recursINDX()
-        header = ncx_header % (ident, max_lvl + 1, title)
+        header = ncx_header % (lang, ident, max_lvl + 1, title)
         ncx =  header + body + ncx_footer
         if not len(indx_data) == num:
             print "Warning: different number of entries in NCX", len(indx_data), num
@@ -257,7 +257,7 @@ class ncxExtract:
         # build the xml
         self.isNCX = True
         print "Write K8 ncx"
-        xml = self.buildK8NCX(ncx_data, metadata['Title'][0], metadata['UniqueID'][0])
+        xml = self.buildK8NCX(ncx_data, metadata['Title'][0], metadata['UniqueID'][0], metadata.get('Language')[0])
         bname = 'toc.ncx'
         ncxname = os.path.join(self.files.k8oebps,bname)
         open(pathof(ncxname), 'wb').write(xml)
