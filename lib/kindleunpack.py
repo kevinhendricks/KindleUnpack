@@ -108,7 +108,7 @@
 #  0.73   faster mobi split, numerous bug fixes in mobi_k8proc, mobi_header, mobi_opf, mobi_k8resc, etc
 #  0.74   added refines metadata, fixed language code in ncx and title in nav, added support for opf: from refines
 #  0.75   much improved dictioanry support including support for multiple inflection sections, minor mobi_opf fixes
-
+#  0.76   rename mobi7 pieces to book.html, toc.ncx, and content.opf to prevent bug in opf
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -589,7 +589,8 @@ def processMobi7(mh, metadata, sect, files, imgnames):
 
     # write the proper mobi html
     fileinfo=[]
-    fname = files.getInputFileBasename() + '.html'
+    # fname = files.getInputFileBasename() + '.html'
+    fname = 'book.html'
     fileinfo.append([None,'', fname])
     outhtml = os.path.join(files.mobi7dir, fname)
     open(pathof(outhtml), 'wb').write(srctext)
@@ -898,7 +899,7 @@ def main():
     global DUMP
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
-    print "KindleUnpack v0.75"
+    print "KindleUnpack v0.76"
     print "   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>"
     print "   Extensive Extensions and Improvements Copyright © 2009-2014 "
     print "       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo."

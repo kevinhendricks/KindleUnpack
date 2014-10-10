@@ -171,8 +171,9 @@ class ncxExtract:
         htmlname = os.path.basename(self.files.outbase)
         htmlname += '.html'
         xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0], metadata.get('Language')[0])
-        #write the ncx file
-        ncxname = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.ncx')
+        # write the ncx file
+        # ncxname = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.ncx')
+        ncxname = os.path.join(self.files.mobi7dir, 'toc.ncx')
         open(pathof(ncxname), 'wb').write(xml)
 
 

@@ -336,18 +336,19 @@ class OPFProcessor(object):
                 '.gif'  : 'image/gif',
                 '.svg'  : 'image/svg+xml',
                 '.xhtml': 'application/xhtml+xml',
-                '.html' : 'text/x-oeb1-document', # for mobi7
-                '.pdf'  : 'application/pdf', # for azw4(print replica textbook)
+                '.html' : 'text/html',                   # for mobi7
+                '.pdf'  : 'application/pdf',             # for azw4(print replica textbook)
                 '.ttf'  : 'application/x-font-ttf',
                 '.otf'  : 'application/x-font-opentype', # replaced?
-                #'.otf' : 'application/vnd.ms-opentype', # [OpenType] OpenType fonts
-                #'.woff' : 'application/font-woff', # [WOFF] WOFF fonts
-                #'.smil' : 'application/smil+xml', # [MediaOverlays301] EPUB Media Overlay documents
-                #'.pls' : 'application/pls+xml', # [PLS] Text-to-Speech (TTS) Pronunciation lexicons
+                '.css'  : 'text/css',
+                #'.html' : 'text/x-oeb1-document',        # for mobi7
+                #'.otf'  : 'application/vnd.ms-opentype', # [OpenType] OpenType fonts
+                #'.woff' : 'application/font-woff',       # [WOFF] WOFF fonts
+                #'.smil' : 'application/smil+xml',        # [MediaOverlays301] EPUB Media Overlay documents
+                #'.pls'  : 'application/pls+xml',         # [PLS] Text-to-Speech (TTS) Pronunciation lexicons
                 #'.mp3'  : 'audio/mpeg',
-                #'.mp4'  : 'audio/mp4',
-                #'.js'   : 'text/javascript', # not supported in K8
-                '.css'  : 'text/css'
+                #'.mp4'  : 'video/mp4',
+                #'.js'   : 'text/javascript',             # not supported in K8
                 }
         spinerefs = []
 
@@ -467,7 +468,8 @@ class OPFProcessor(object):
         opf_metadata = self.buildOPFMetadata(metadata_tag)
         data += opf_metadata
         if self.has_ncx:
-            ncxname = self.files.getInputFileBasename() + '.ncx'
+            # ncxname = self.files.getInputFileBasename() + '.ncx'
+            ncxname = 'toc.ncx'
         else:
             ncxname = None
         [opf_manifest, spinerefs] = self.buildOPFManifest(ncxname)
@@ -527,7 +529,8 @@ class OPFProcessor(object):
             return self.BookId
         else:
             data = self.buildMobi7OPF()
-            outopf = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.opf')
+            # outopf = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.opf')
+            outopf = os.path.join(self.files.mobi7dir, 'content.opf')
             open(pathof(outopf), 'wb').write(data)
             return 0
 

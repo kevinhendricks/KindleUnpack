@@ -818,8 +818,11 @@ class MobiHeader:
                         addValue(name, str(value))
                     elif size == 12:
                         value, = struct.unpack('>L',content)
-                        # handle special case of missing CoverOffset
-                        if id != 201 or value != 0xffffffff:
+                        # handle special case of missing CoverOffset or missing ThumbOffset
+                        if id == 201 or id == 202:
+                            if value != 0xffffffff:
+                                addValue(name, str(value))
+                        else:
                             addValue(name, str(value))
                     else:
                         print "Warning: Bad key, size, value combination detected in EXTH ", id, size, content.encode('hex')
