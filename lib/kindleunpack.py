@@ -119,7 +119,7 @@ WRITE_RAW_DATA = False
 SPLIT_COMBO_MOBIS = False
 """ Set to True to split combination mobis into mobi7 and mobi8 pieces. """
 
-CREATE_COVER_PAGE = True # XXX experimental
+CREATE_COVER_PAGE = True  # XXX experimental
 """ Create and insert a cover xhtml page. """
 
 EOF_RECORD = chr(0xe9) + chr(0x8e) + "\r\n"
@@ -141,17 +141,15 @@ K8_BOUNDARY = "BOUNDARY"
 
 import sys
 import os
-import locale
-import codecs
 
 from utf8_utils import utf8_argv, add_cp65001_codec, utf8_str
 add_cp65001_codec()
 from path import pathof
 
-
-import array, struct, re, imghdr, zlib, zipfile, datetime
-import getopt, binascii
-import uuid
+import struct
+import re
+import zlib
+import getopt
 
 class unpackException(Exception):
     pass
@@ -161,7 +159,7 @@ class unpackException(Exception):
 from unpack_structure import fileNames
 from mobi_sectioner import Sectionizer, describe
 from mobi_header import MobiHeader, dump_contexth
-from mobi_utils import getLanguage, toHex, fromBase32, toBase32, mangle_fonts
+from mobi_utils import toBase32
 from mobi_opf import OPFProcessor
 from mobi_html import HTMLProcessor, XHTMLK8Processor
 from mobi_ncx import ncxExtract
@@ -347,10 +345,10 @@ def processRESC(i, files, imgnames, sect, data, k8resc):
         print "Extracting Resource: ", rescname
         outrsc = os.path.join(files.outdir, rescname)
         open(pathof(outrsc), 'wb').write(data)
-    if True: #try:
+    if True:  # try:
         # parse the spine and metadata from RESC
         k8resc = K8RESCProcessor(data[16:], DUMP)
-    else: # except:
+    else:  # except:
         print "Warning: cannot extract information from RESC."
         k8resc = None
     imgnames.append(None)
@@ -401,7 +399,6 @@ def processPrintReplica(metadata, files, imgnames, mh):
         tableIndexOffset = 8 + 4*numTables
         # for each table, read in count of sections, assume first section is a PDF
         # and output other sections as binary files
-        paths = []
         for i in xrange(numTables):
             sectionCount, = struct.unpack_from('>L', rawML, 0x08 + 4*i)
             for j in xrange(sectionCount):
@@ -422,7 +419,6 @@ def processPrintReplica(metadata, files, imgnames, mh):
             usedmap[name] = 'used'
     opf = OPFProcessor(files, metadata, fileinfo, imgnames, False, mh, usedmap)
     opf.writeOPF()
-
 
 
 def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfuscate_data, apnxfile=None, epubver='2'):
@@ -496,7 +492,6 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
     print "Building an epub-like structure"
     htmlproc = XHTMLK8Processor(imgnames, k8proc)
     usedmap = htmlproc.buildXHTML()
-
 
     # write out the xhtml svg, and css files
     # fileinfo = [skelid|coverpage, dir, name]
@@ -658,7 +653,7 @@ def processUnknownSections(mh, sect, files, K8Boundary):
         if sect.sectiondescriptions[i] == "":
             data = sect.loadSection(i)
             type = data[0:4]
-            if  type == TERMINATION_INDICATOR3:
+            if type == TERMINATION_INDICATOR3:
                 description = "Termination Marker 3 Nulls"
             elif type == TERMINATION_INDICATOR2:
                 description = "Termination Marker 2 Nulls"
@@ -946,7 +941,6 @@ def main():
     else:
         infile = args[0]
         outdir = os.path.splitext(infile)[0]
-
 
     infileext = os.path.splitext(infile)[1].upper()
     if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW3', '.AZW4']:

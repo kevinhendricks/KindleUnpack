@@ -4,13 +4,13 @@
 
 DEBUG=False
 
-import sys, os
-import array, struct, re
+import re
 
-from mobi_utils import getLanguage, toHex, fromBase32, toBase32
+from mobi_utils import fromBase32
 
 
 class HTMLProcessor:
+
     def __init__(self, files, metadata, imgnames):
         self.files = files
         self.metadata = metadata
@@ -44,14 +44,14 @@ class HTMLProcessor:
         dataList = []
         for end in sorted(positionMap.keys()):
             if end == 0 or end > lastPos:
-                continue # something's up - can't put a tag in outside <html>...</html>
+                continue  # something's up - can't put a tag in outside <html>...</html>
             dataList.append(rawtext[pos:end])
             dataList.append(positionMap[end])
             pos = end
         dataList.append(rawtext[pos:])
         srctext = "".join(dataList)
         rawtext = None
-        datalist = None
+        dataList = None
         self.srctext = srctext
         self.indx_data = indx_data
         return srctext
@@ -59,7 +59,6 @@ class HTMLProcessor:
     def insertHREFS(self):
         srctext = self.srctext
         imgnames = self.imgnames
-        files = self.files
         metadata = self.metadata
 
         # put in the hrefs
@@ -102,9 +101,8 @@ class HTMLProcessor:
         return srctext, self.used
 
 
-
-
 class XHTMLK8Processor:
+
     def __init__(self, imgnames, k8proc):
         self.imgnames = imgnames
         self.k8proc = k8proc
@@ -119,7 +117,6 @@ class XHTMLK8Processor:
         #   kindle:pos:fid:XXXX:off:YYYYYYYYYY  (used for internal link within xhtml)
         #       XXXX is the offset in records into divtbl
         #       YYYYYYYYYYYY is a base32 number you add to the divtbl insertpos to get final position
-
 
         # pos:fid pattern
         posfid_pattern = re.compile(r'''(<a.*?href=.*?>)''', re.IGNORECASE)
@@ -148,7 +145,6 @@ class XHTMLK8Processor:
                     srcpieces[j] = tag
             part = "".join(srcpieces)
             parts.append(part)
-
 
         # we are free to cut and paste as we see fit
         # we can safely remove all of the Kindlegen generated aid tags
@@ -181,7 +177,6 @@ class XHTMLK8Processor:
                         lambda m:' style="page-break-after:%s"'%m.group(1), tag)
             part = "".join(srcpieces)
             parts[i] = part
-
 
         # we have to handle substitutions for the flows  pieces first as they may
         # be inlined into the xhtml text
@@ -259,7 +254,6 @@ class XHTMLK8Processor:
                         tag = font_index_pattern.sub(replacement, tag, 1)
                         self.used[fontName] = 'used'
 
-
                 # process links to other css pieces
                 for m in url_css_index_pattern.finditer(tag):
                     num = fromBase32(m.group(1))
@@ -280,7 +274,7 @@ class XHTMLK8Processor:
 
             # but keep it around if it ends up we do need it
 
-            # # flow pattern not inside url()
+            # flow pattern not inside url()
             # srcpieces = tag_pattern.split(flowpart)
             # for j in range(1, len(srcpieces),2):
             #     tag = srcpieces[j]
@@ -314,7 +308,7 @@ class XHTMLK8Processor:
                 if tag.startswith('<'):
                     for m in flow_pattern.finditer(tag):
                         num = fromBase32(m.group(1))
-                        if num > 0 and  num < len(self.k8proc.flowinfo):
+                        if num > 0 and num < len(self.k8proc.flowinfo):
                             [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
                             flowpart = flows[num]
                             if fmt == 'inline':
@@ -389,7 +383,6 @@ class XHTMLK8Processor:
             part = "".join(srcpieces)
             # store away modified version
             parts[i] = part
-
 
         # finally perform any general cleanups needed to make valid XHTML
         # these include:

@@ -16,13 +16,10 @@
 #
 # These include routines for path manipulation and encoding and decoding uri/iri
 
-import sys, os
-import locale
-import codecs
+import sys
+import os
 from utf8_utils import utf8_str
 from urllib import unquote
-import path
-import unicodedata
 
 _iswindows = sys.platform.startswith('win')
 
@@ -89,7 +86,7 @@ def getcwd():
 def walk(top):
     toppath = top
     rv = []
-    for base, dnames, names  in os.walk(pathof(top)):
+    for base, dnames, names in os.walk(pathof(top)):
         base = utf8_str(base, enc=sys.getfilesystemencoding())
         for name in names:
             name = utf8_str(name, enc=sys.getfilesystemencoding())
@@ -97,9 +94,9 @@ def walk(top):
             rv.append(filepath)
     return rv
 
-def relpath(path, start=None):
-    rpath = os.path.relpath(utf8_str(path),utf8_str(start))
+def relpath(apath, start=None):
+    rpath = os.path.relpath(utf8_str(apath),utf8_str(start))
     return rpath
 
-def abspath(path):
-    return utf8_str(os.path.abspath(pathof(path)))
+def abspath(apath):
+    return utf8_str(os.path.abspath(pathof(apath)))

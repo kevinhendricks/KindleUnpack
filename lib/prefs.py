@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-import os, sys, codecs
+import os
+import codecs
 from ConfigParser import RawConfigParser
 
 def getprefs(configfile, tkobj, PERSIST):
@@ -62,7 +63,7 @@ def getprefs(configfile, tkobj, PERSIST):
 
 
 def saveprefs(configfile, prefs, tkobj):
-    #tkobj name = prefs dictionary key = ini.get|set name
+    # tkobj name = prefs dictionary key = ini.get|set name
     config = RawConfigParser()
     config.add_section('Defaults')
     if len(tkobj.mobipath.get()):

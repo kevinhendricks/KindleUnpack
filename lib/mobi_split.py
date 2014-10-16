@@ -1,9 +1,7 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
 import struct
-import binascii
 from path import pathof
 
 # important  pdb header offsets
@@ -26,7 +24,7 @@ title_offset = 84
 first_resc_record = 108
 first_content_index = 192
 last_content_index = 194
-kf8_fdst_index = 192 # for KF8 mobi headers
+kf8_fdst_index = 192  # for KF8 mobi headers
 fcis_index = 200
 flis_index = 208
 srcs_index = 224
@@ -60,9 +58,9 @@ def readsection(datain,secno):
     secstart, secend = getsecaddr(datain,secno)
     return datain[secstart:secend]
 
-def writesection(datain,secno,secdata): # overwrite, accounting for different length
-    #dataout = deletesectionrange(datain,secno, secno)
-    #return insertsection(dataout, secno, secdata)
+def writesection(datain,secno,secdata):  # overwrite, accounting for different length
+    # dataout = deletesectionrange(datain,secno, secno)
+    # return insertsection(dataout, secno, secdata)
     datalst = []
     nsec = getint(datain,number_of_pdb_records,'H')
     zerosecstart,zerosecend = getsecaddr(datain,0)
@@ -90,7 +88,7 @@ def writesection(datain,secno,secdata): # overwrite, accounting for different le
     dataout = "".join(datalst)
     return dataout
 
-def nullsection(datain,secno): # make it zero-length without deleting it
+def nullsection(datain,secno):  # make it zero-length without deleting it
     datalst = []
     nsec = getint(datain,number_of_pdb_records,'H')
     secstart, secend = getsecaddr(datain,secno)
@@ -112,7 +110,7 @@ def nullsection(datain,secno): # make it zero-length without deleting it
     dataout = "".join(datalst)
     return dataout
 
-def deletesectionrange(datain,firstsec,lastsec): # delete a range of sections
+def deletesectionrange(datain,firstsec,lastsec):  # delete a range of sections
     datalst = []
     firstsecstart,firstsecend = getsecaddr(datain,firstsec)
     lastsecstart,lastsecend = getsecaddr(datain,lastsec)
@@ -141,10 +139,10 @@ def deletesectionrange(datain,firstsec,lastsec): # delete a range of sections
     dataout = "".join(datalst)
     return dataout
 
-def insertsection(datain,secno,secdata): # insert a new section
+def insertsection(datain,secno,secdata):  # insert a new section
     datalst = []
     nsec = getint(datain,number_of_pdb_records,'H')
-    #print "inserting secno" , secno,  "into" ,nsec, "sections"
+    # print "inserting secno" , secno,  "into" ,nsec, "sections"
     secstart,secend = getsecaddr(datain,secno)
     zerosecstart,zerosecend = getsecaddr(datain,0)
     dif = len(secdata)
@@ -153,7 +151,6 @@ def insertsection(datain,secno,secdata): # insert a new section
     datalst.append(datain[unique_id_seed+4:number_of_pdb_records])
     datalst.append(struct.pack('>H',nsec+1))
     newstart = zerosecstart + 8
-    totoff = 0
     for i in range(0,secno):
         ofs, flgval = struct.unpack_from('>2L',datain,first_pdb_record+i*8)
         ofs += 8
@@ -174,12 +171,12 @@ def insertsection(datain,secno,secdata): # insert a new section
     return dataout
 
 
-def insertsectionrange(sectionsource,firstsec,lastsec,sectiontarget,targetsec): # insert a range of sections
-    #print "inserting secno" , firstsec,  "to", lastsec, "into" ,targetsec, "sections"
-    #dataout = sectiontarget
-    #for idx in range(lastsec,firstsec-1,-1):
+def insertsectionrange(sectionsource,firstsec,lastsec,sectiontarget,targetsec):  # insert a range of sections
+    # print "inserting secno" , firstsec,  "to", lastsec, "into" ,targetsec, "sections"
+    # dataout = sectiontarget
+    # for idx in range(lastsec,firstsec-1,-1):
     #    dataout = insertsection(dataout,targetsec,readsection(sectionsource,idx))
-    #return dataout
+    # return dataout
     datalst = []
     nsec = getint(sectiontarget,number_of_pdb_records,'H')
     zerosecstart, zerosecend = getsecaddr(sectiontarget,0)
@@ -198,21 +195,21 @@ def insertsectionrange(sectionsource,firstsec,lastsec,sectiontarget,targetsec): 
         ofsnew = ofs + 8*nins
         flgvalnew = flgval
         datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L', flgvalnew))
-        #print ofsnew, flgvalnew, ofs, flgval
+        # print ofsnew, flgvalnew, ofs, flgval
     srcstart0, nul = getsecaddr(sectionsource,firstsec)
     for i in range(nins):
         isrcstart, nul = getsecaddr(sectionsource,firstsec+i)
         ofsnew = insstart + (isrcstart-srcstart0) + 8*nins
         flgvalnew = 2*(targetsec+i)
         datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L', flgvalnew))
-        #print ofsnew, flgvalnew
+        # print ofsnew, flgvalnew
     dif = srcend - srcstart
     for i in range(targetsec,nsec):
         ofs, flgval = struct.unpack_from('>2L',sectiontarget,first_pdb_record+i*8)
         ofsnew = ofs + dif + 8*nins
         flgvalnew = 2*(i+nins)
         datalst.append(struct.pack('>L',ofsnew) + struct.pack('>L',flgvalnew))
-        #print ofsnew, flgvalnew, ofs, flgval
+        # print ofsnew, flgvalnew, ofs, flgval
     lpad = newstart - (first_pdb_record + 8*(nsec + nins))
     if lpad > 0:
         datalst.append('\0' * lpad)
@@ -361,7 +358,7 @@ class mobi_split:
             ofs_list = [(fcis_index,'L'),(flis_index,'L'),(datp_index,'L'),(hufftbloff, 'L')]
             for ofs,sz in ofs_list:
                 n = getint(datain_rec0,ofs,sz)
-                #print "n",n
+                # print "n",n
                 if n > 0 and n < lastimage:
                     lastimage = n-1
         print "First Image, last Image", firstimage,lastimage

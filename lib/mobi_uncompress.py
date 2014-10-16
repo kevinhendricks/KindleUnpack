@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
-import array, struct, os
+import struct
 
 
 class unpackException(Exception):
     pass
 
 class UncompressedReader:
+
     def unpack(self, data):
         return data
 
 class PalmdocReader:
+
     def unpack(self, i):
         o, p = '', 0
         while p < len(i):
@@ -22,9 +23,9 @@ class PalmdocReader:
                 o += i[p:p+c]
                 p += c
             elif (c < 128):
-                o += chr(c);
+                o += chr(c)
             elif (c >= 192):
-                o += ' ' + chr(c ^ 128);
+                o += ' ' + chr(c ^ 128)
             else:
                 if p < len(i):
                     c = (c << 8) | ord(i[p])

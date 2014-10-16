@@ -2,11 +2,7 @@
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 
-import sys
-import os
-
-import codecs
-import struct, re
+import struct
 import uuid
 
 # import the mobiunpack support libraries
@@ -87,7 +83,7 @@ def dump_contexth(cpage, extheader):
         529 : 'Unknown_(529)',
         534 : 'Input_Source_Type_(534)',
         535 : 'Kindlegen_BuildRev_Number_(535)',
-        536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        536 : 'Container_Info_(536)',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Container_Resolution_(538)',
         539 : 'Container_Mimetype_(539)',
         542 : 'Unknown_but_changes_with_file_name_only_(542)',
@@ -384,7 +380,7 @@ class MobiHeader:
         529 : 'kindlegen_Source-Target',
         534 : 'kindlegen_Input_Source_Type',
         535 : 'kindlegen_BuildRev_Number',
-        536 : 'Container_Info', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        536 : 'Container_Info',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Container_Resolution',
         539 : 'Container_Mimetype',
         542 : 'Unknown_but_changes_with_file_name_only_542',
@@ -495,7 +491,6 @@ class MobiHeader:
         if self.codepage in codec_map.keys():
             self.codec = codec_map[self.codepage]
 
-
         # title
         toff, tlen = struct.unpack('>II', self.header[0x54:0x5c])
         tend = toff + tlen
@@ -507,7 +502,7 @@ class MobiHeader:
         self.exth_length = 0
         if self.hasExth:
             self.exth_length, = struct.unpack_from('>L', self.header, self.exth_offset+4)
-            self.exth_length = ((self.exth_length + 3)>>2)<<2 # round to next 4 byte boundary
+            self.exth_length = ((self.exth_length + 3)>>2)<<2  # round to next 4 byte boundary
             self.exth = self.header[self.exth_offset:self.exth_offset+self.exth_length]
 
         # parse the exth / metadata
@@ -663,7 +658,6 @@ class MobiHeader:
         self.extra1 = self.header[self.exth_offset+self.exth_length:title_offset]
         self.extra2 = self.header[title_offset+title_length:]
 
-
         print "Mobipocket header from section %d" % self.start
         print "     Offset  Value Hex Dec        Description"
         for key in self.mobi_header_sorted_keys:
@@ -692,9 +686,8 @@ class MobiHeader:
 
         if len(self.extra2) > 0:
             print "Extra data between Title and end of header, length %d" % len(self.extra2)
-            print  self.extra2.encode('hex')
+            print self.extra2.encode('hex')
             print ""
-
 
     def isPrintReplica(self):
         return self.mlstart[0:4] == "%MOP"
@@ -786,7 +779,6 @@ class MobiHeader:
         self.rawSize = len(rawML)
         return rawML
 
-
     # all metadata is stored in a dictionary with key and returns a *list* of values
     # a list is used to allow for multiple creators, multiple contributors, etc
     def parseMetaData(self):
@@ -850,12 +842,11 @@ class MobiHeader:
     def getMetaData(self):
         return self.metadata
 
-
     def describeHeader(self, DUMP):
         print "Mobi Version:", self.version
         print "Codec:", self.codec
         print "Title:", self.title
-        if 'Updated_Title'  in self.metadata:
+        if 'Updated_Title' in self.metadata:
             print "EXTH Title:", str(self.metadata['Updated_Title'][0])
         if self.compression == 0x4448:
             print "Huffdic compression"

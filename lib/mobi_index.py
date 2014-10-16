@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
-import array, struct, os, re
+import struct
 
-from mobi_utils import toHex, toBin
+from mobi_utils import toHex
 
 class MobiIndex:
-    def __init__(self, sect, DEBUG = False):
+
+    def __init__(self, sect, DEBUG=False):
         self.sect = sect
         self.DEBUG = DEBUG
 
-    def getIndexData(self, idx, label = "Unknown"):
+    def getIndexData(self, idx, label="Unknown"):
         sect = self.sect
         outtbl = []
         ctoc_text = {}
@@ -66,7 +66,6 @@ class MobiIndex:
                         print text
         return outtbl, ctoc_text
 
-
     def parseINDXHeader(self, data):
         "read INDX header"
         if not data[:4] == 'INDX':
@@ -86,7 +85,7 @@ class MobiIndex:
         ordt2 = None
 
         ocnt, oentries, op1, op2, otagx  = struct.unpack_from('>LLLLL',data, 0xa4)
-        if  header['code'] == 0xfdea or ocnt != 0 or oentries > 0:
+        if header['code'] == 0xfdea or ocnt != 0 or oentries > 0:
             # horribly hacked up ESP (sample) mobi books use two ORDT sections but never specify
             # them in the proper place in the header.  They seem to be codepage 65002 which seems
             # to be some sort of strange EBCDIC utf-8 or 16 encoded strings
@@ -107,7 +106,6 @@ class MobiIndex:
             print
         return header, ordt1, ordt2
 
-
     def readCTOC(self, txtdata):
         # read all blocks from CTOC
         ctoc_data = {}
@@ -116,10 +114,10 @@ class MobiIndex:
             if txtdata[offset] == '\0':
                 break
             idx_offs = offset
-            #first n bytes: name len as vwi
+            # first n bytes: name len as vwi
             pos, ilen = getVariableWidthValue(txtdata, offset)
             offset += pos
-            #<len> next bytes: name
+            # <len> next bytes: name
             name = txtdata[offset:offset+ilen]
             offset += ilen
             if self.DEBUG:
@@ -170,7 +168,7 @@ def readTagSection(start, data):
     return controlByteCount, tags
 
 
-def countSetBits(value, bits = 8):
+def countSetBits(value, bits=8):
     '''
     Count the set bits in the given value.
 
@@ -230,7 +228,7 @@ def getTagMap(controlByteCount, tagTable, entryData, startPos, endPos):
                 tags.append((tag, value, None, valuesPerEntry))
     for tag, valueCount, valueBytes, valuesPerEntry in tags:
         values = []
-        if valueCount != None:
+        if valueCount is not None:
             # Read valueCount * valuesPerEntry variable width values.
             for _ in range(valueCount):
                 for _ in range(valuesPerEntry):

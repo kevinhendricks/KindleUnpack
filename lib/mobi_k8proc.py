@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os, struct, re
+import os
+import struct
+import re
 from mobi_index import MobiIndex
 from mobi_utils import fromBase32
 from path import pathof
@@ -26,14 +28,17 @@ def reverse_tag_iter(block):
     end = len(block)
     while True:
         pgt = block.rfind(b'>', 0, end)
-        if pgt == -1: break
+        if pgt == -1:
+            break
         plt = block.rfind(b'<', 0, pgt)
-        if plt == -1: break
+        if plt == -1:
+            break
         yield block[plt:pgt+1]
         end = plt
 
 
 class K8Processor:
+
     def __init__(self, mh, sect, files, debug=False):
         self.sect = sect
         self.files = files
@@ -67,7 +72,6 @@ class K8Processor:
                         print "Section %d: 0x%08X - 0x%08X" % (j, self.fdsttbl[j],self.fdsttbl[j+1])
             else:
                 print "\nError: K8 Mobi with Missing FDST info"
-
 
         # read/process skeleton index info to create the skeleton table
         skeltbl = []
@@ -134,7 +138,6 @@ class K8Processor:
             print "table: ref_type, ref_title, fragtbl entry number"
             for j in xrange(len(self.guidetbl)):
                 print self.guidetbl[j]
-
 
     def buildParts(self, rawML):
         # now split the rawML into its flow pieces
@@ -253,7 +256,6 @@ class K8Processor:
             self.flows[j] = flowpart
             self.flowinfo.append([type, format, dir, fname])
 
-
         if self.DEBUG:
             print "\nFlow Map:  %d entries" % len(self.flowinfo)
             for fi in self.flowinfo:
@@ -264,7 +266,7 @@ class K8Processor:
             for pi in self.partinfo:
                 print pi
 
-        if False: #self.Debug:
+        if False:  # self.Debug:
             # dump all of the locations of the aid tags used in TEXT
             # find id links only inside of tags
             #    inside any < > pair find all "aid=' and return whatever is inside the quotes
@@ -282,10 +284,8 @@ class K8Processor:
 
         return
 
-
     # get information fragment table entry by pos
     def getFragTblInfo(self, pos):
-        baseptr = 0
         for j in xrange(len(self.fragtbl)):
             [insertpos, idtext, filenum, seqnum, startpos, length] = self.fragtbl[j]
             if pos >= insertpos and pos < (insertpos + length):
@@ -294,14 +294,12 @@ class K8Processor:
                 return seqnum, 'before: ' + idtext
         return None, None
 
-
     # get information about the part (file) that exists at pos in original rawML
     def getFileInfo(self, pos):
         for [partnum, dir, filename, start, end, aidtext] in self.partinfo:
             if pos >= start and pos < end:
                 return filename, partnum, start, end
         return None, None, None, None
-
 
     # accessor functions to properly protect the internal structure
     def getNumberOfParts(self):
@@ -332,7 +330,6 @@ class K8Processor:
             return self.flowinfo[i]
         return None
 
-
     def getIDTagByPosFid(self, posfid, offset):
         # first convert kindle:pos:fid and offset info to position in file
         row = fromBase32(posfid)
@@ -359,7 +356,6 @@ class K8Processor:
         if pn is None and skelpos is None:
             print "Error: getIDTag - no file contains ", pos
         textblock = self.parts[pn]
-        idtbl = []
         npos = pos - skelpos
         # if npos inside a tag then search all text before the its end of tag marker
         pgt = textblock.find('>',npos)
@@ -385,7 +381,6 @@ class K8Processor:
                     return m.group(1)
         return ''
 
-
     # do we need to do deep copying
     def setParts(self, parts):
         assert(len(parts) == len(self.parts))
@@ -397,7 +392,6 @@ class K8Processor:
         assert(len(flows) == len(self.flows))
         for i in xrange(len(flows)):
             self.flows[i] = flows[i]
-
 
     # get information about the part (file) that exists at pos in original rawML
     def getSkelInfo(self, pos):
@@ -428,7 +422,6 @@ class K8Processor:
         guidetext = unicode(guidetext, self.mh.codec).encode("utf-8")
         return guidetext
 
-
     def getPageIDTag(self, pos):
         # find the first tag with a named anchor (name or id attribute) before pos
         # but page map offsets need to little more leeway so if the offset points
@@ -437,7 +430,6 @@ class K8Processor:
         if pn is None and skelpos is None:
             print "Error: getIDTag - no file contains ", pos
         textblock = self.parts[pn]
-        idtbl = []
         npos = pos - skelpos
         # if npos inside a tag then search all text before next ending tag
         pgt = textblock.find('>',npos)

@@ -20,8 +20,9 @@ MAX_HEIGHT = 4096
 """ The max height for the svg cover page. """
 
 
-import sys, os, re
-import struct, imghdr
+import os
+import struct
+import imghdr
 from path import pathof
 
 
@@ -70,7 +71,7 @@ def get_image_size(imgname, imgdata=None):
         width, height = struct.unpack('<HH', head[6:10])
     elif imgtype == 'jpeg' and imgdata is None:
         try:
-            fhandle.seek(0) # Read 0xff next
+            fhandle.seek(0)  # Read 0xff next
             size = 2
             ftype = 0
             while not 0xc0 <= ftype <= 0xcf:
@@ -83,7 +84,7 @@ def get_image_size(imgname, imgdata=None):
             # We are at a SOFn block
             fhandle.seek(1, 1)  # Skip `precision' byte.
             height, width = struct.unpack('>HH', fhandle.read(4))
-        except Exception: #IGNORE:W0703
+        except Exception:  # IGNORE:W0703
             return
     elif imgtype == 'jpeg' and imgdata is not None:
         try:
@@ -104,7 +105,7 @@ def get_image_size(imgname, imgdata=None):
             pos += 1  # Skip `precision' byte.
             height, width = struct.unpack('>HH', imgdata[pos:pos+4])
             pos += 4
-        except Exception: #IGNORE:W0703
+        except Exception:  # IGNORE:W0703
             return
     else:
         return
@@ -112,6 +113,7 @@ def get_image_size(imgname, imgdata=None):
 
 # XXX experimental
 class CoverProcessor(object):
+
     """Create a cover page.
 
     """
@@ -120,7 +122,7 @@ class CoverProcessor(object):
         self.metadata = metadata
         self.imgnames = imgnames
         self.cover_page = COVER_PAGE_FINENAME
-        self.use_svg = USE_SVG_WRAPPER # Use svg wrapper.
+        self.use_svg = USE_SVG_WRAPPER  # Use svg wrapper.
         self.lang = metadata.get('Language', ['en'])[0]
         # This should ensure that if the methods to find the cover image's
         # dimensions should fail for any reason, the SVG routine will not be used.
@@ -200,7 +202,8 @@ class CoverProcessor(object):
             data += 'body { text-align: center; padding:0pt; margin: 0pt; }\n'
             data += '</style>\n</head>\n'
             data += '<body>\n  <div>\n'
-            data += '    <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="{0:s}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">\n'.format(viewBox)
+            data += '    <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet"'
+            data += ' version="1.1" viewBox="{0:s}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">\n'.format(viewBox)
             data += '      <image height="{0}" width="{1}" xlink:href="{2}"/>\n'.format(height, width, image_path)
             data += '    </svg>\n'
             data += '  </div>\n</body>\n</html>'
@@ -215,7 +218,7 @@ class CoverProcessor(object):
         outfile = os.path.join(files.k8text, cover_page)
         if os.path.exists(pathof(outfile)):
             print 'Warning: {:s} already exists.'.format(cover_page)
-            #return
+            # return
             os.remove(pathof(outfile))
         open(pathof(outfile), 'w').write(data)
         return
@@ -223,6 +226,6 @@ class CoverProcessor(object):
     def guide_toxml(self):
         files = self.files
         text_dir = os.path.relpath(files.k8text, files.k8oebps)
-        data = '<reference type="cover" title="Cover" href="{:s}/{:s}" />\n'.format(\
+        data = '<reference type="cover" title="Cover" href="{:s}/{:s}" />\n'.format(
                 text_dir, self.cover_page)
         return data

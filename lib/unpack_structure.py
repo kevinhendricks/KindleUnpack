@@ -4,11 +4,10 @@
 DUMP = False
 """ Set to True to dump all possible information. """
 
-import sys
 import os
-
-import struct, zlib, zipfile
-import re, binascii
+import zipfile
+import re
+import binascii
 import path
 from path import pathof
 from mobi_utils import mangle_fonts
@@ -17,6 +16,7 @@ class unpackException(Exception):
     pass
 
 class ZipInfo(zipfile.ZipInfo):
+
     def __init__(self, *args, **kwargs):
         if 'compress_type' in kwargs:
             compress_type = kwargs.pop('compress_type')
@@ -24,27 +24,27 @@ class ZipInfo(zipfile.ZipInfo):
         self.compress_type = compress_type
 
 class fileNames:
+
     def __init__(self, infile, outdir):
         self.infile = infile
         self.outdir = outdir
-        if not path.exists(outdir):
-            path.mkdir(outdir)
-        self.mobi7dir = os.path.join(outdir,'mobi7')
+        if not path.exists(self.outdir):
+            path.mkdir(self.outdir)
+        self.mobi7dir = os.path.join(self.outdir,'mobi7')
         if not path.exists(self.mobi7dir):
             path.mkdir(self.mobi7dir)
         self.imgdir = os.path.join(self.mobi7dir, 'Images')
         if not path.exists(self.imgdir):
             path.mkdir(self.imgdir)
-        self.hdimgdir = os.path.join(outdir,'HDImages')
+        self.hdimgdir = os.path.join(self.outdir,'HDImages')
         if not path.exists(self.hdimgdir):
             path.mkdir(self.hdimgdir)
-        self.outbase = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0])
+        self.outbase = os.path.join(self.outdir, os.path.splitext(os.path.split(infile)[1])[0])
 
     def getInputFileBasename(self):
         return os.path.splitext(os.path.basename(self.infile))[0]
 
     def makeK8Struct(self):
-        outdir = self.outdir
         self.k8dir = os.path.join(self.outdir,'mobi8')
         if not path.exists(self.k8dir):
             path.mkdir(self.k8dir)

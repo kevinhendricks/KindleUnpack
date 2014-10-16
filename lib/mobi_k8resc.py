@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-import sys, re
 from mobi_utils import fromBase32
 
 _OPF_PARENT_TAGS = ['xml', 'package', 'metadata', 'dc-metadata', 'x-metadata', 'manifest', 'spine', 'tours', 'guide']
 
 class K8RESCProcessor(object):
 
-    def __init__(self, data, debug = False):
+    def __init__(self, data, debug=False):
         self._debug = debug
         self.resc = None
         self.opos = 0
@@ -50,7 +49,6 @@ class K8RESCProcessor(object):
         self.resc = data[start_pos:start_pos+self.resc_length]
         self.parseData()
 
-
     def prepend_to_spine(self, key, idref, linear, properties):
         self.spine_order = [key] + self.spine_order
         self.spine_idrefs[key] = idref
@@ -60,7 +58,6 @@ class K8RESCProcessor(object):
         if properties is not None:
             attributes["properties"] = properties
         self.spine_pageattributes[key] = attributes
-
 
     # RESC tag iterator
     def resc_tag_iter(self):
@@ -72,7 +69,7 @@ class K8RESCProcessor(object):
                 break
             if text is not None:
                 tcontent = text.rstrip(" \r\n")
-            else: # we have a tag
+            else:  # we have a tag
                 ttype, tname, tattr = self.parsetag(tag)
                 if ttype == "begin":
                     tcontent = None
@@ -81,7 +78,7 @@ class K8RESCProcessor(object):
                         yield "".join(prefix), tname, tattr, tcontent
                     else:
                         last_tattr = tattr
-                else: # single or end
+                else:  # single or end
                     if ttype == "end":
                         prefix.pop()
                         tattr = last_tattr
@@ -90,7 +87,6 @@ class K8RESCProcessor(object):
                             tname += '-end'
                     yield "".join(prefix), tname, tattr, tcontent
                     tcontent = None
-
 
     # now parse the RESC to extract spine and extra metadata info
     def parseData(self):
@@ -134,7 +130,6 @@ class K8RESCProcessor(object):
                 else:
                     self.extrameta.append([tname, tattr, tcontent])
 
-
     # parse and return either leading text or the next tag
     def parseresc(self):
         p = self.opos
@@ -160,7 +155,6 @@ class K8RESCProcessor(object):
         self.opos = te + 1
         return None, self.resc[p:te+1]
 
-
     # parses tag to identify:  [tname, ttype, tattr]
     #    tname: tag name
     #    ttype: tag type ('begin', 'end' or 'single');
@@ -170,13 +164,16 @@ class K8RESCProcessor(object):
         tname = None
         ttype = None
         tattr = {}
-        while s[p:p+1] == ' ' : p += 1
+        while s[p:p+1] == ' ' :
+            p += 1
         if s[p:p+1] == '/':
             ttype = 'end'
             p += 1
-            while s[p:p+1] == ' ' : p += 1
+            while s[p:p+1] == ' ' :
+                p += 1
         b = p
-        while s[p:p+1] not in ('>', '/', ' ', '"', "'","\r","\n") : p += 1
+        while s[p:p+1] not in ('>', '/', ' ', '"', "'","\r","\n") :
+            p += 1
         tname=s[b:p].lower()
         # some special cases
         if tname == "?xml":
@@ -188,22 +185,27 @@ class K8RESCProcessor(object):
         if ttype is None:
             # parse any attributes of begin or single tags
             while s.find('=',p) != -1 :
-                while s[p:p+1] == ' ' : p += 1
+                while s[p:p+1] == ' ' :
+                    p += 1
                 b = p
-                while s[p:p+1] != '=' : p += 1
+                while s[p:p+1] != '=' :
+                    p += 1
                 aname = s[b:p].lower()
                 aname = aname.rstrip(' ')
                 p += 1
-                while s[p:p+1] == ' ' : p += 1
+                while s[p:p+1] == ' ' :
+                    p += 1
                 if s[p:p+1] in ('"', "'") :
                     p = p + 1
                     b = p
-                    while s[p:p+1] not in ('"', "'"): p += 1
+                    while s[p:p+1] not in ('"', "'"):
+                        p += 1
                     val = s[b:p]
                     p += 1
                 else :
                     b = p
-                    while s[p:p+1] not in ('>', '/', ' ') : p += 1
+                    while s[p:p+1] not in ('>', '/', ' ') :
+                        p += 1
                     val = s[b:p]
                 tattr[aname] = val
         if ttype is None:
@@ -212,20 +214,18 @@ class K8RESCProcessor(object):
                 ttype = 'single'
         return ttype, tname, tattr
 
-
     def taginfo_toxml(self, taginfo):
         res = []
         tname, tattr, tcontent = taginfo
         res.append('<' + tname)
         if tattr is not None:
             for key in tattr.keys():
-                res.append(' ' + key + '="'+tattr[key]+'"' )
+                res.append(' ' + key + '="'+tattr[key]+'"')
         if tcontent is not None:
             res.append('>' + tcontent + '</' + tname + '>\n')
         else:
             res.append('/>\n')
         return "".join(res)
-
 
     def hasSpine(self):
         return len(self.spine_order) > 0
@@ -238,7 +238,6 @@ class K8RESCProcessor(object):
             if 'refines' in tattr.keys():
                 return True
         return False
-
 
     def createMetadata(self, epubver):
         for taginfo in self.extrameta:

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
-import sys, struct, re
+import struct
+import re
 
 _TABLE = [('m', 1000), ('cm', 900), ('d', 500), ('cd', 400), ('c', 100), ('xc', 90), ('l', 50), ('xl', 40), ('x', 10), ('ix', 9), ('v', 5), ('iv', 4), ('i', 1)]
 
@@ -39,7 +40,7 @@ def _parseNames(numpages, data):
         pageMap += '(' + tup + ')'
         spos, nametype, svalue = tup.split(",")
         # print spos, nametype, svalue
-        if nametype == 'a' or  nametype == 'r':
+        if nametype == 'a' or nametype == 'r':
             svalue = int(svalue)
         spos = int(spos)
         for i in range(spos - 1, numpages):
@@ -62,8 +63,8 @@ def _parseNames(numpages, data):
     return pagenames, pageMap
 
 
-
 class PageMapProcessor:
+
     def __init__(self, mh, data):
         self.mh = mh
         self.data = data
@@ -95,7 +96,6 @@ class PageMapProcessor:
             self.pageoffsets.append(od)
         self.pagenames, self.pageMap = _parseNames(self.pm_nn, self.pmstr)
 
-
     def getPageMap(self):
         return self.pageMap
 
@@ -104,7 +104,6 @@ class PageMapProcessor:
 
     def getOffsets(self):
         return self.pageoffsets
-
 
     def generateKF8PageMapXML(self, k8proc):
         pagemapxml = '<page-map xmlns="http://www.idpf.org/2007/opf">\n'
@@ -122,7 +121,6 @@ class PageMapProcessor:
         pagemapxml += "</page-map>\n"
         pagemapxml = unicode(pagemapxml, self.mh.codec).encode("utf-8")
         return pagemapxml
-
 
     def generateAPNX(self, apnx_meta):
         if apnx_meta['format'] == 'MOBI_8':

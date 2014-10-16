@@ -6,6 +6,7 @@ import Tkconstants
 
 # basic scrolled text widget
 class ScrolledText(Tkinter.Text):
+
     def __init__(self, master=None, **kw):
         self.frame = Tkinter.Frame(master)
         self.vbar = Tkinter.Scrollbar(self.frame)

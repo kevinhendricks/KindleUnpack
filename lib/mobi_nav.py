@@ -12,13 +12,15 @@ NAVIGATION_FINENAME = 'nav.xhtml'
 DEFAULT_TITLE = 'Navigation'
 """ The default title for the navigation document. """
 
-import sys, os, struct, re
+import os
+import re
 
-#from mobi_utils import toBase32
-#from mobi_index import MobiIndex
+# from mobi_utils import toBase32
+# from mobi_index import MobiIndex
 from path import pathof
 
 class NAVProcessor(object):
+
     def __init__(self, files):
         self.files = files
         self.navname = NAVIGATION_FINENAME
@@ -36,9 +38,9 @@ class NAVProcessor(object):
         type_map = {
             'cover' : 'cover',
             'title-page' : 'title-page',
-            #?: 'frontmatter',
+            # ?: 'frontmatter',
             'text' : 'bodymatter',
-            #?: 'backmatter',
+            # ?: 'backmatter',
             'toc' : 'toc',
             'loi' : 'loi',
             'lot' : 'lot',
@@ -61,7 +63,7 @@ class NAVProcessor(object):
         dir_ = os.path.relpath(self.files.k8text, self.files.k8oebps).replace('\\', '/')
 
         data = ''
-        #guidetext = re.sub(r'<!--.*?-->', '', guidetext, 0, re.S)
+        # guidetext = re.sub(r'<!--.*?-->', '', guidetext, 0, re.S)
         references = re.findall(r'<reference\s+.*?>', guidetext, re.I)
         for reference in references:
             mo_type = re_type.search(reference)
@@ -94,7 +96,7 @@ class NAVProcessor(object):
         header += '    <h1>Table of contents</h1>\n'
         footer = '  </nav>\n'
 
-        #recursive part
+        # recursive part
         def recursINDX(max_lvl=0, num=0, lvl=0, start=-1, end=-1):
             if start>len(indx_data) or end>len(indx_data):
                 print "Warning (in buildTOC): missing INDX child entries", start, end, len(indx_data)
@@ -124,20 +126,20 @@ class NAVProcessor(object):
                     link = htmlfile
                 else:
                     link = '{:s}#{:s}'.format(htmlfile, desttag)
-                #open entry
-                #xhtml += indent2 + '<li id="toc{:d}">'.format(num)
+                # open entry
+                # xhtml += indent2 + '<li id="toc{:d}">'.format(num)
                 xhtml += indent2 + '<li>'
                 entry = '<a href="{:}">{:s}</a>'.format(link, text)
-                #entry = '<span>{:s}</span>'.format(text)
+                # entry = '<span>{:s}</span>'.format(text)
                 xhtml += entry
-                #recurs
+                # recurs
                 if e['child1'] >= 0:
                     xhtml += '\n'
-                    xhtmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,\
+                    xhtmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,
                             e['child1'], e['childn'] + 1)
                     xhtml += xhtmlrec
                     xhtml += indent2
-                #close entry
+                # close entry
                 xhtml += '</li>\n'
             xhtml += indent1 + '</ol>\n'
             return xhtml, max_lvl, num
@@ -176,7 +178,7 @@ class NAVProcessor(object):
 
     def writeNAV(self, ncx_data, guidetext, metadata):
         # build the xhtml
-        #print "Write Navigation Document."
+        # print "Write Navigation Document."
         xhtml = self.buildNAV(ncx_data, guidetext, metadata.get('Title')[0], metadata.get('Language')[0])
         fname = os.path.join(self.files.k8text, self.navname)
         open(pathof(fname), 'wb').write(xhtml)

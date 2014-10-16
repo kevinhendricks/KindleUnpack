@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
+# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 
 # to work around tk_chooseDirectory not properly returning unicode paths on Windows
 # need to use a dialog that can be hacked up to actually return full unicode paths
@@ -8,7 +8,7 @@
 # to actually use unicode for path
 
 # The original license for EasyDialogs is as follows
-#
+
 # Copyright (c) 2003-2005 Jimmy Retzlaff
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
@@ -17,10 +17,10 @@
 # the rights to use, copy, modify, merge, publish, distribute, sublicense,
 # and/or sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following conditions:
-# 
+
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -33,11 +33,8 @@
 AskFolder(...) -- Ask the user to select a folder Windows specific
 """
 
-import os
-
 import ctypes
-from ctypes import POINTER, byref, cdll, c_int, windll
-from ctypes.wintypes import LPCWSTR, LPWSTR
+from ctypes.wintypes import LPCWSTR
 import ctypes.wintypes as wintypes
 
 
@@ -205,7 +202,3 @@ def AskFolder(
         ole32.CoTaskMemFree(pidl)
         result = path.value
     return result
-
-
-
-
