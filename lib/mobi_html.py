@@ -1,14 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-
-DEBUG=False
+from __future__ import unicode_literals, division, absolute_import, print_function
 
 import sys, os
-import array, struct, re
+
+from compatibility_utils import PY2, PY3, text_type, utf8_str, unicode_str
+import codecs
+
+if PY2:
+    range = xrange
+
+import array
+
+import struct
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5, python 3 okay with bytestring
+
+import re
+# note: re requites the pattern to be the exact same type as the data to be searched in python3
+# but u"" is not allowed for the pattern itself only b""
 
 from mobi_utils import getLanguage, toHex, fromBase32, toBase32
-
 
 class HTMLProcessor:
     def __init__(self, files, metadata, imgnames):
@@ -23,8 +37,8 @@ class HTMLProcessor:
     def findAnchors(self, rawtext, indx_data, positionMap):
         # process the raw text
         # find anchors...
-        print "Find link anchors"
-        link_pattern = re.compile(r'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''', re.IGNORECASE)
+        print("Find link anchors")
+        link_pattern = re.compile(br'''<[^<>]+filepos=['"]{0,1}(\d+)[^<>]*>''', re.IGNORECASE)
         # TEST NCX: merge in filepos from indx
         pos_links = [int(m.group(1)) for m in link_pattern.finditer(rawtext)]
         if indx_data:
@@ -33,12 +47,12 @@ class HTMLProcessor:
 
         for position in pos_links:
             if position in positionMap:
-                positionMap[position] = positionMap[position] + '<a id="filepos%d" />' % position
+                positionMap[position] = positionMap[position] + utf8_str('<a id="filepos%d" />' % position)
             else:
-                positionMap[position] = '<a id="filepos%d" />' % position
+                positionMap[position] = utf8_str('<a id="filepos%d" />' % position)
 
         # apply dictionary metadata and anchors
-        print "Insert data into html"
+        print("Insert data into html")
         pos = 0
         lastPos = len(rawtext)
         dataList = []
@@ -49,7 +63,7 @@ class HTMLProcessor:
             dataList.append(positionMap[end])
             pos = end
         dataList.append(rawtext[pos:])
-        srctext = "".join(dataList)
+        srctext = b"".join(dataList)
         rawtext = None
         datalist = None
         self.srctext = srctext
@@ -63,22 +77,22 @@ class HTMLProcessor:
         metadata = self.metadata
 
         # put in the hrefs
-        print "Insert hrefs into html"
+        print("Insert hrefs into html")
         # There doesn't seem to be a standard, so search as best as we can
-        
-        link_pattern = re.compile(r'''<a([^>]*?)filepos=['"]{0,1}0*(\d+)['"]{0,1}([^>]*?)>''', re.IGNORECASE)
-        srctext = link_pattern.sub(r'''<a\1href="#filepos\2"\3>''', srctext)
+
+        link_pattern = re.compile(br'''<a([^>]*?)filepos=['"]{0,1}0*(\d+)['"]{0,1}([^>]*?)>''', re.IGNORECASE)
+        srctext = link_pattern.sub(br'''<a\1href="#filepos\2"\3>''', srctext)
 
         # remove empty anchors
-        print "Remove empty anchors from html"
-        srctext = re.sub(r"<a\s*/>",r"", srctext)
-        srctext = re.sub(r"<a\s*>\s*</a>",r"", srctext)
-        
+        print("Remove empty anchors from html")
+        srctext = re.sub(br"<a\s*/>",br"", srctext)
+        srctext = re.sub(br"<a\s*>\s*</a>",br"", srctext)
+
         # convert image references
-        print "Insert image references into html"
+        print("Insert image references into html")
         # split string into image tag pieces and other pieces
-        image_pattern = re.compile(r'''(<img.*?>)''', re.IGNORECASE)
-        image_index_pattern = re.compile(r'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
+        image_pattern = re.compile(br'''(<img.*?>)''', re.IGNORECASE)
+        image_index_pattern = re.compile(br'''recindex=['"]{0,1}([0-9]+)['"]{0,1}''', re.IGNORECASE)
         srcpieces = image_pattern.split(srctext)
         srctext = self.srctext = None
 
@@ -89,16 +103,16 @@ class HTMLProcessor:
                 imageNumber = int(m.group(1))
                 imageName = imgnames[imageNumber-1]
                 if imageName is None:
-                    print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
+                    print("Error: Referenced image %s was not recognized as a valid image" % imageNumber)
                 else:
-                    replacement = 'src="Images/' + imageName + '"'
+                    replacement = b'src="Images/' + utf8_str(imageName) + b'"'
                     tag = image_index_pattern.sub(replacement, tag, 1)
             srcpieces[i] = tag
-        srctext = "".join(srcpieces)
+        srctext = b"".join(srcpieces)
 
         # add in character set meta into the html header if needed
         if 'Codec' in metadata:
-            srctext = srctext[0:12]+'<meta http-equiv="content-type" content="text/html; charset='+metadata.get('Codec')[0]+'" />'+srctext[12:]
+            srctext = srctext[0:12]+b'<meta http-equiv="content-type" content="text/html; charset='+utf8_str(metadata.get('Codec')[0])+b'" />'+srctext[12:]
         return srctext, self.used
 
 
@@ -122,12 +136,12 @@ class XHTMLK8Processor:
 
 
         # pos:fid pattern
-        posfid_pattern = re.compile(r'''(<a.*?href=.*?>)''', re.IGNORECASE)
-        posfid_index_pattern = re.compile(r'''['"]kindle:pos:fid:([0-9|A-V]+):off:([0-9|A-V]+).*?["']''')
+        posfid_pattern = re.compile(br'''(<a.*?href=.*?>)''', re.IGNORECASE)
+        posfid_index_pattern = re.compile(br'''['"]kindle:pos:fid:([0-9|A-V]+):off:([0-9|A-V]+).*?["']''')
 
         parts = []
-        print "Building proper xhtml for each file"
-        for i in xrange(self.k8proc.getNumberOfParts()):
+        print("Building proper xhtml for each file")
+        for i in range(self.k8proc.getNumberOfParts()):
             part = self.k8proc.getPart(i)
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.getPartInfo(i)
 
@@ -135,51 +149,51 @@ class XHTMLK8Processor:
             srcpieces = posfid_pattern.split(part)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if tag.startswith('<'):
+                if tag.startswith(b'<'):
                     for m in posfid_index_pattern.finditer(tag):
                         posfid = m.group(1)
                         offset = m.group(2)
                         filename, idtag = self.k8proc.getIDTagByPosFid(posfid, offset)
-                        if idtag == '':
-                            replacement= '"' + filename + '"'
+                        if idtag == b'':
+                            replacement= b'"' + utf8_str(filename) + b'"'
                         else:
-                            replacement = '"' + filename + '#' + idtag + '"'
+                            replacement = b'"' + utf8_str(filename) + b'#' + idtag + b'"'
                         tag = posfid_index_pattern.sub(replacement, tag, 1)
                     srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b"".join(srcpieces)
             parts.append(part)
 
 
         # we are free to cut and paste as we see fit
         # we can safely remove all of the Kindlegen generated aid tags
-        find_tag_with_aid_pattern = re.compile(r'''(<[^>]*\said\s*=[^>]*>)''', re.IGNORECASE)
-        within_tag_aid_position_pattern = re.compile(r'''\said\s*=['"][^'"]*['"]''')
-        for i in xrange(len(parts)):
+        find_tag_with_aid_pattern = re.compile(br'''(<[^>]*\said\s*=[^>]*>)''', re.IGNORECASE)
+        within_tag_aid_position_pattern = re.compile(br'''\said\s*=['"][^'"]*['"]''')
+        for i in range(len(parts)):
             part = parts[i]
             srcpieces = find_tag_with_aid_pattern.split(part)
             for j in range(len(srcpieces)):
                 tag = srcpieces[j]
-                if tag.startswith('<'):
+                if tag.startswith(b'<'):
                     for m in within_tag_aid_position_pattern.finditer(tag):
-                        replacement = ''
+                        replacement = b''
                         tag = within_tag_aid_position_pattern.sub(replacement, tag, 1)
                     srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b"".join(srcpieces)
             parts[i] = part
 
         # we can safely replace all of the Kindlegen generated data-AmznPageBreak tags
         # with page-break-after style patterns
-        find_tag_with_AmznPageBreak_pattern = re.compile(r'''(<[^>]*\sdata-AmznPageBreak=[^>]*>)''', re.IGNORECASE)
-        within_tag_AmznPageBreak_position_pattern = re.compile(r'''\sdata-AmznPageBreak=['"]([^'"]*)['"]''')
-        for i in xrange(len(parts)):
+        find_tag_with_AmznPageBreak_pattern = re.compile(br'''(<[^>]*\sdata-AmznPageBreak=[^>]*>)''', re.IGNORECASE)
+        within_tag_AmznPageBreak_position_pattern = re.compile(br'''\sdata-AmznPageBreak=['"]([^'"]*)['"]''')
+        for i in range(len(parts)):
             part = parts[i]
             srcpieces = find_tag_with_AmznPageBreak_pattern.split(part)
             for j in range(len(srcpieces)):
                 tag = srcpieces[j]
-                if tag.startswith('<'):
+                if tag.startswith(b'<'):
                     srcpieces[j] = within_tag_AmznPageBreak_position_pattern.sub(
-                        lambda m:' style="page-break-after:%s"'%m.group(1), tag)
-            part = "".join(srcpieces)
+                        lambda m:b' style="page-break-after:' + m.group(1) + b'"', tag)
+            part = b"".join(srcpieces)
             parts[i] = part
 
 
@@ -195,19 +209,19 @@ class XHTMLK8Processor:
         flowinfo.append([None, None, None, None])
 
         # regular expression search patterns
-        img_pattern = re.compile(r'''(<[img\s|image\s][^>]*>)''', re.IGNORECASE)
-        img_index_pattern = re.compile(r'''[('"]kindle:embed:([0-9|A-V]+)[^'"]*['")]''', re.IGNORECASE)
+        img_pattern = re.compile(br'''(<[img\s|image\s][^>]*>)''', re.IGNORECASE)
+        img_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)[^'"]*['")]''', re.IGNORECASE)
 
-        tag_pattern = re.compile(r'''(<[^>]*>)''')
-        flow_pattern = re.compile(r'''['"]kindle:flow:([0-9|A-V]+)\?mime=([^'"]+)['"]''', re.IGNORECASE)
+        tag_pattern = re.compile(br'''(<[^>]*>)''')
+        flow_pattern = re.compile(br'''['"]kindle:flow:([0-9|A-V]+)\?mime=([^'"]+)['"]''', re.IGNORECASE)
 
-        url_pattern = re.compile(r'''(url\(.*?\))''', re.IGNORECASE)
-        url_img_index_pattern = re.compile(r'''[('"]kindle:embed:([0-9|A-V]+)\?mime=image/[^\)]*["')]''', re.IGNORECASE)
-        font_index_pattern = re.compile(r'''[('"]kindle:embed:([0-9|A-V]+)["')]''', re.IGNORECASE)
-        url_css_index_pattern = re.compile(r'''kindle:flow:([0-9|A-V]+)\?mime=text/css[^\)]*''', re.IGNORECASE)
+        url_pattern = re.compile(br'''(url\(.*?\))''', re.IGNORECASE)
+        url_img_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)\?mime=image/[^\)]*["')]''', re.IGNORECASE)
+        font_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)["')]''', re.IGNORECASE)
+        url_css_index_pattern = re.compile(br'''kindle:flow:([0-9|A-V]+)\?mime=text/css[^\)]*''', re.IGNORECASE)
 
-        for i in xrange(1, self.k8proc.getNumberOfFlows()):
-            [type, format, dir, filename] = self.k8proc.getFlowInfo(i)
+        for i in range(1, self.k8proc.getNumberOfFlows()):
+            [ftype, format, dir, filename] = self.k8proc.getFlowInfo(i)
             flowpart = self.k8proc.getFlow(i)
 
             # links to raster image files from image tags
@@ -215,18 +229,18 @@ class XHTMLK8Processor:
             srcpieces = img_pattern.split(flowpart)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if tag.startswith('<im'):
+                if tag.startswith(b'<im'):
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
                         imageName = self.imgnames[imageNumber-1]
                         if imageName is not None:
-                            replacement = '"../Images/' + imageName + '"'
+                            replacement = b'"../Images/' + utf8_str(imageName) + b'"'
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
                         else:
-                            print "Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag)
+                            print("Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag))
                     srcpieces[j] = tag
-            flowpart = "".join(srcpieces)
+            flowpart = b"".join(srcpieces)
 
             # replacements inside css url():
             srcpieces = url_pattern.split(flowpart)
@@ -237,25 +251,25 @@ class XHTMLK8Processor:
                 for m in url_img_index_pattern.finditer(tag):
                     imageNumber = fromBase32(m.group(1))
                     imageName = self.imgnames[imageNumber-1]
-                    osep = m.group()[0]
-                    csep = m.group()[-1]
+                    osep = m.group()[0:1]
+                    csep = m.group()[-1:]
                     if imageName is not None:
-                        replacement = '%s%s%s'%(osep, '../Images/' + imageName, csep)
+                        replacement = osep +  b'../Images/' + utf8_str(imageName) +  csep
                         self.used[imageName] = 'used'
                         tag = url_img_index_pattern.sub(replacement, tag, 1)
                     else:
-                        print "Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag)
+                        print("Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag))
 
                 # process links to fonts
                 for m in font_index_pattern.finditer(tag):
                     fontNumber = fromBase32(m.group(1))
                     fontName = self.imgnames[fontNumber-1]
-                    osep = m.group()[0]
-                    csep = m.group()[-1]
+                    osep = m.group()[0:1]
+                    csep = m.group()[-1:]
                     if fontName is None:
-                        print "Error: Referenced font %s was not recognized as a valid font in %s" % (fontNumber, tag)
+                        print("Error: Referenced font %s was not recognized as a valid font in %s" % (fontNumber, tag))
                     else:
-                        replacement = '%s%s%s'%(osep, '../Fonts/' + fontName, csep)
+                        replacement = osep +  b'../Fonts/' + utf8_str(fontName) +  csep
                         tag = font_index_pattern.sub(replacement, tag, 1)
                         self.used[fontName] = 'used'
 
@@ -264,17 +278,17 @@ class XHTMLK8Processor:
                 for m in url_css_index_pattern.finditer(tag):
                     num = fromBase32(m.group(1))
                     [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
-                    replacement = '"../' + pdir + '/' + fnm + '"'
+                    replacement = b'"../' + utf8_str(pdir) + b'/' + utf8_str(fnm) + b'"'
                     tag = url_css_index_pattern.sub(replacement, tag, 1)
                     self.used[fnm] = 'used'
 
                 srcpieces[j] = tag
-            flowpart = "".join(srcpieces)
+            flowpart = b"".join(srcpieces)
 
             # store away in our own copy
             flows.append(flowpart)
 
-            # I do no thtink this case exists and even if it does exist, it needs to be done in a separate
+            # I do not think this case exists and even if it does exist, it needs to be done in a separate
             # pass to prevent inlining a flow piece into another flow piece before the inserted one or the
             # target one has been fully processed
 
@@ -284,58 +298,58 @@ class XHTMLK8Processor:
             # srcpieces = tag_pattern.split(flowpart)
             # for j in range(1, len(srcpieces),2):
             #     tag = srcpieces[j]
-            #     if tag.startswith('<'):
+            #     if tag.startswith(b'<'):
             #         for m in flow_pattern.finditer(tag):
             #             num = fromBase32(m.group(1))
             #             [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
             #             flowtext = self.k8proc.getFlow(num)
-            #             if fmt == 'inline':
+            #             if fmt == b'inline':
             #                 tag = flowtext
             #             else:
-            #                 replacement = '"../' + pdir + '/' + fnm + '"'
+            #                 replacement = b'"../' + utf8_str(pdir) + b'/' + utf8_str(fnm) + b'"'
             #                 tag = flow_pattern.sub(replacement, tag, 1)
             #                 self.used[fnm] = 'used'
             #         srcpieces[j] = tag
-            # flowpart = "".join(srcpieces)
+            # flowpart = b"".join(srcpieces)
 
         # now handle the main text xhtml parts
 
         # Handle the flow items in the XHTML text pieces
         # kindle:flow:XXXX?mime=YYYY/ZZZ (used for style sheets, svg images, etc)
-        tag_pattern = re.compile(r'''(<[^>]*>)''')
-        flow_pattern = re.compile(r'''['"]kindle:flow:([0-9|A-V]+)\?mime=([^'"]+)['"]''', re.IGNORECASE)
-        for i in xrange(len(parts)):
+        tag_pattern = re.compile(br'''(<[^>]*>)''')
+        flow_pattern = re.compile(br'''['"]kindle:flow:([0-9|A-V]+)\?mime=([^'"]+)['"]''', re.IGNORECASE)
+        for i in range(len(parts)):
             part = parts[i]
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.partinfo[i]
             # flow pattern
             srcpieces = tag_pattern.split(part)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if tag.startswith('<'):
+                if tag.startswith(b'<'):
                     for m in flow_pattern.finditer(tag):
                         num = fromBase32(m.group(1))
                         if num > 0 and  num < len(self.k8proc.flowinfo):
                             [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
                             flowpart = flows[num]
-                            if fmt == 'inline':
+                            if fmt == b'inline':
                                 tag = flowpart
                             else:
-                                replacement = '"../' + pdir + '/' + fnm + '"'
+                                replacement = b'"../' + utf8_str(pdir) + b'/' + utf8_str(fnm) + b'"'
                                 tag = flow_pattern.sub(replacement, tag, 1)
                                 self.used[fnm] = 'used'
                         else:
-                            print "warning: ignoring non-existent flow link", tag, " value 0x%x" % num
+                            print("warning: ignoring non-existent flow link", tag, " value 0x%x" % num)
                     srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b''.join(srcpieces)
 
             # store away modified version
             parts[i] = part
 
         # Handle any embedded raster images links in style= attributes urls
-        style_pattern = re.compile(r'''(<[a-zA-Z0-9]+\s[^>]*style\s*=\s*[^>]*>)''', re.IGNORECASE)
-        img_index_pattern = re.compile(r'''[('"]kindle:embed:([0-9|A-V]+)[^'"]*['")]''', re.IGNORECASE)
+        style_pattern = re.compile(br'''(<[a-zA-Z0-9]+\s[^>]*style\s*=\s*[^>]*>)''', re.IGNORECASE)
+        img_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)[^'"]*['")]''', re.IGNORECASE)
 
-        for i in xrange(len(parts)):
+        for i in range(len(parts)):
             part = parts[i]
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.partinfo[i]
 
@@ -343,30 +357,30 @@ class XHTMLK8Processor:
             srcpieces = style_pattern.split(part)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if 'kindle:embed' in tag:
+                if b'kindle:embed' in tag:
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
                         imageName = self.imgnames[imageNumber-1]
-                        osep = m.group()[0]
-                        csep = m.group()[-1]
+                        osep = m.group()[0:1]
+                        csep = m.group()[-1:]
                         if imageName is not None:
-                            replacement = '%s%s%s'%(osep, '../Images/' + imageName, csep)
+                            replacement = osep + b'../Images/'+ utf8_str(imageName) + csep
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
                         else:
-                            print "Error: Referenced image %s in style url was not recognized in %s" % (imageNumber, tag)
+                            print("Error: Referenced image %s in style url was not recognized in %s" % (imageNumber, tag))
                     srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b"".join(srcpieces)
 
             # store away modified version
             parts[i] = part
 
         # Handle any embedded raster images links in the xhtml text
         # kindle:embed:XXXX?mime=image/gif (png, jpeg, etc) (used for images)
-        img_pattern = re.compile(r'''(<[img\s|image\s][^>]*>)''', re.IGNORECASE)
-        img_index_pattern = re.compile(r'''['"]kindle:embed:([0-9|A-V]+)[^'"]*['"]''')
+        img_pattern = re.compile(br'''(<[img\s|image\s][^>]*>)''', re.IGNORECASE)
+        img_index_pattern = re.compile(br'''['"]kindle:embed:([0-9|A-V]+)[^'"]*['"]''')
 
-        for i in xrange(len(parts)):
+        for i in range(len(parts)):
             part = parts[i]
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.partinfo[i]
 
@@ -375,18 +389,18 @@ class XHTMLK8Processor:
             srcpieces = img_pattern.split(part)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if tag.startswith('<im'):
+                if tag.startswith(b'<im'):
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
                         imageName = self.imgnames[imageNumber-1]
                         if imageName is not None:
-                            replacement = '"../Images/' + imageName + '"'
+                            replacement = b'"../Images/' + utf8_str(imageName) + b'"'
                             self.used[imageName] = 'used'
                             tag = img_index_pattern.sub(replacement, tag, 1)
                         else:
-                            print "Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag)
+                            print("Error: Referenced image %s was not recognized as a valid image in %s" % (imageNumber, tag))
                     srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b"".join(srcpieces)
             # store away modified version
             parts[i] = part
 
@@ -396,10 +410,10 @@ class XHTMLK8Processor:
         #   in svg tags replace "perserveaspectratio" attributes with "perserveAspectRatio"
         #   in svg tags replace "viewbox" attributes with "viewBox"
         #   in <li> remove value="XX" attributes since these are illegal
-        tag_pattern = re.compile(r'''(<[^>]*>)''')
-        li_value_pattern = re.compile(r'''\svalue\s*=\s*['"][^'"]*['"]''', re.IGNORECASE)
+        tag_pattern = re.compile(br'''(<[^>]*>)''')
+        li_value_pattern = re.compile(br'''\svalue\s*=\s*['"][^'"]*['"]''', re.IGNORECASE)
 
-        for i in xrange(len(parts)):
+        for i in range(len(parts)):
             part = parts[i]
             [partnum, dir, filename, beg, end, aidtext] = self.k8proc.partinfo[i]
 
@@ -407,14 +421,14 @@ class XHTMLK8Processor:
             srcpieces = tag_pattern.split(part)
             for j in range(1, len(srcpieces),2):
                 tag = srcpieces[j]
-                if tag.startswith('<svg') or tag.startswith('<SVG'):
-                    tag = tag.replace('preserveaspectratio','preserveAspectRatio')
-                    tag = tag.replace('viewbox','viewBox')
-                elif tag.startswith('<li ') or tag.startswith('<LI '):
+                if tag.startswith(b'<svg') or tag.startswith(b'<SVG'):
+                    tag = tag.replace(b'preserveaspectratio',b'preserveAspectRatio')
+                    tag = tag.replace(b'viewbox',b'viewBox')
+                elif tag.startswith(b'<li ') or tag.startswith(b'<LI '):
                     tagpieces = li_value_pattern.split(tag)
-                    tag = "".join(tagpieces)
+                    tag = b"".join(tagpieces)
                 srcpieces[j] = tag
-            part = "".join(srcpieces)
+            part = b"".join(srcpieces)
             # store away modified version
             parts[i] = part
 

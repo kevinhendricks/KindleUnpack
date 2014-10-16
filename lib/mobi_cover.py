@@ -1,5 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
+
+from __future__ import unicode_literals, division, absolute_import, print_function
+
+import sys
+from compatibility_utils import utf8_str
+import codecs
+from unipath import pathof
+import os, imghdr
+
+import struct
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5, python 3 okay with bytestring
 
 USE_SVG_WRAPPER = True
 """ Set to True to use svg wrapper for default. """
@@ -20,11 +33,6 @@ MAX_HEIGHT = 4096
 """ The max height for the svg cover page. """
 
 
-import sys, os, re
-import struct, imghdr
-from path import pathof
-
-
 def get_image_type(imgname, imgdata=None):
     imgtype = imghdr.what(pathof(imgname), imgdata)
 
@@ -33,8 +41,8 @@ def get_image_type(imgname, imgdata=None):
     # ImageMagick handles those, so, do it too.
     if imgtype is None:
         if imgdata is None:
-            f = open(pathof(imgname), 'rb')
-            imgdata = f.read()
+            with open(pathof(imgname), 'rb') as f:
+                imgdata = f.read()
         if imgdata[0:2] == b'\xFF\xD8':
             # Get last non-null bytes
             last = len(imgdata)
@@ -62,12 +70,12 @@ def get_image_size(imgname, imgdata=None):
 
     imgtype = get_image_type(imgname, imgdata)
     if imgtype == 'png':
-        check = struct.unpack('>i', head[4:8])[0]
+        check = struct.unpack(b'>i', head[4:8])[0]
         if check != 0x0d0a1a0a:
             return
-        width, height = struct.unpack('>ii', head[16:24])
+        width, height = struct.unpack(b'>ii', head[16:24])
     elif imgtype == 'gif':
-        width, height = struct.unpack('<HH', head[6:10])
+        width, height = struct.unpack(b'<HH', head[6:10])
     elif imgtype == 'jpeg' and imgdata is None:
         try:
             fhandle.seek(0) # Read 0xff next
@@ -79,10 +87,10 @@ def get_image_size(imgname, imgdata=None):
                 while ord(byte) == 0xff:
                     byte = fhandle.read(1)
                 ftype = ord(byte)
-                size = struct.unpack('>H', fhandle.read(2))[0] - 2
+                size = struct.unpack(b'>H', fhandle.read(2))[0] - 2
             # We are at a SOFn block
             fhandle.seek(1, 1)  # Skip `precision' byte.
-            height, width = struct.unpack('>HH', fhandle.read(4))
+            height, width = struct.unpack(b'>HH', fhandle.read(4))
         except Exception: #IGNORE:W0703
             return
     elif imgtype == 'jpeg' and imgdata is not None:
@@ -92,17 +100,17 @@ def get_image_size(imgname, imgdata=None):
             ftype = 0
             while not 0xc0 <= ftype <= 0xcf:
                 pos += size
-                byte = imgdata[pos]
+                byte = imgdata[pos:pos+1]
                 pos += 1
                 while ord(byte) == 0xff:
-                    byte = imgdata[pos]
+                    byte = imgdata[pos:pos+1]
                     pos += 1
                 ftype = ord(byte)
-                size = struct.unpack('>H', imgdata[pos:pos+2])[0] - 2
+                size = struct.unpack(b'>H', imgdata[pos:pos+2])[0] - 2
                 pos += 2
             # We are at a SOFn block
             pos += 1  # Skip `precision' byte.
-            height, width = struct.unpack('>HH', imgdata[pos:pos+4])
+            height, width = struct.unpack(b'>HH', imgdata[pos:pos+4])
             pos += 4
         except Exception: #IGNORE:W0703
             return
@@ -133,13 +141,13 @@ class CoverProcessor(object):
         self.cover_image = None
         if imgname is not None:
             self.cover_image = imgname
-        elif 'CoverOffset' in metadata.keys():
+        elif 'CoverOffset' in metadata:
             imageNumber = int(metadata['CoverOffset'][0])
             cover_image = self.imgnames[imageNumber]
             if cover_image is not None:
                 self.cover_image = cover_image
             else:
-                print 'Warning: Cannot identify the cover image.'
+                print('Warning: Cannot identify the cover image.')
         if self.use_svg:
             try:
                 if imgdata is None:
@@ -162,7 +170,7 @@ class CoverProcessor(object):
         return self.cover_page
 
     def buildXHTML(self):
-        print 'Building a cover page.'
+        print('Building a cover page.')
         files = self.files
         cover_image = self.cover_image
         title = self.title
@@ -214,10 +222,10 @@ class CoverProcessor(object):
 
         outfile = os.path.join(files.k8text, cover_page)
         if os.path.exists(pathof(outfile)):
-            print 'Warning: {:s} already exists.'.format(cover_page)
-            #return
+            print('Warning: {:s} already exists.'.format(cover_page))
             os.remove(pathof(outfile))
-        open(pathof(outfile), 'w').write(data)
+        with open(pathof(outfile), 'wb') as f:
+            f.write(data.encode('utf-8'))
         return
 
     def guide_toxml(self):

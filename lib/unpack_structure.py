@@ -1,16 +1,30 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
+
+from __future__ import unicode_literals, division, absolute_import, print_function
+import sys
+from compatibility_utils import text_type
+
+import unipath
+from unipath import pathof
 
 DUMP = False
 """ Set to True to dump all possible information. """
 
-import sys
 import os
+import codecs
 
-import struct, zlib, zipfile
-import re, binascii
-import path
-from path import pathof
+import struct
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5, python 3 okay with bytestring
+
+import re
+# note: re requites the pattern to be the exact same type as the data to be searched in python3
+# but u"" is not allowed for the pattern itself only b""
+
+import zlib, zipfile
+import binascii
 from mobi_utils import mangle_fonts
 
 class unpackException(Exception):
@@ -27,17 +41,17 @@ class fileNames:
     def __init__(self, infile, outdir):
         self.infile = infile
         self.outdir = outdir
-        if not path.exists(outdir):
-            path.mkdir(outdir)
+        if not unipath.exists(outdir):
+            unipath.mkdir(outdir)
         self.mobi7dir = os.path.join(outdir,'mobi7')
-        if not path.exists(self.mobi7dir):
-            path.mkdir(self.mobi7dir)
+        if not unipath.exists(self.mobi7dir):
+            unipath.mkdir(self.mobi7dir)
         self.imgdir = os.path.join(self.mobi7dir, 'Images')
-        if not path.exists(self.imgdir):
-            path.mkdir(self.imgdir)
+        if not unipath.exists(self.imgdir):
+            unipath.mkdir(self.imgdir)
         self.hdimgdir = os.path.join(outdir,'HDImages')
-        if not path.exists(self.hdimgdir):
-            path.mkdir(self.hdimgdir)
+        if not unipath.exists(self.hdimgdir):
+            unipath.mkdir(self.hdimgdir)
         self.outbase = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0])
 
     def getInputFileBasename(self):
@@ -46,53 +60,55 @@ class fileNames:
     def makeK8Struct(self):
         outdir = self.outdir
         self.k8dir = os.path.join(self.outdir,'mobi8')
-        if not path.exists(self.k8dir):
-            path.mkdir(self.k8dir)
+        if not unipath.exists(self.k8dir):
+            unipath.mkdir(self.k8dir)
         self.k8metainf = os.path.join(self.k8dir,'META-INF')
-        if not path.exists(self.k8metainf):
-            path.mkdir(self.k8metainf)
+        if not unipath.exists(self.k8metainf):
+            unipath.mkdir(self.k8metainf)
         self.k8oebps = os.path.join(self.k8dir,'OEBPS')
-        if not path.exists(self.k8oebps):
-            path.mkdir(self.k8oebps)
+        if not unipath.exists(self.k8oebps):
+            unipath.mkdir(self.k8oebps)
         self.k8images = os.path.join(self.k8oebps,'Images')
-        if not path.exists(self.k8images):
-            path.mkdir(self.k8images)
+        if not unipath.exists(self.k8images):
+            unipath.mkdir(self.k8images)
         self.k8fonts = os.path.join(self.k8oebps,'Fonts')
-        if not path.exists(self.k8fonts):
-            path.mkdir(self.k8fonts)
+        if not unipath.exists(self.k8fonts):
+            unipath.mkdir(self.k8fonts)
         self.k8styles = os.path.join(self.k8oebps,'Styles')
-        if not path.exists(self.k8styles):
-            path.mkdir(self.k8styles)
+        if not unipath.exists(self.k8styles):
+            unipath.mkdir(self.k8styles)
         self.k8text = os.path.join(self.k8oebps,'Text')
-        if not path.exists(self.k8text):
-            path.mkdir(self.k8text)
+        if not unipath.exists(self.k8text):
+            unipath.mkdir(self.k8text)
 
     # recursive zip creation support routine
     def zipUpDir(self, myzip, tdir, localname):
         currentdir = tdir
         if localname != "":
             currentdir = os.path.join(currentdir,localname)
-        list = path.listdir(currentdir)
+        list = unipath.listdir(currentdir)
         for file in list:
             afilename = file
             localfilePath = os.path.join(localname, afilename)
             realfilePath = os.path.join(currentdir,file)
-            if path.isfile(realfilePath):
+            if unipath.isfile(realfilePath):
                 myzip.write(pathof(realfilePath), pathof(localfilePath), zipfile.ZIP_DEFLATED)
-            elif path.isdir(realfilePath):
+            elif unipath.isdir(realfilePath):
                 self.zipUpDir(myzip, tdir, localfilePath)
 
     def makeEPUB(self, usedmap, obfuscate_data, uid):
         bname = os.path.join(self.k8dir, self.getInputFileBasename() + '.epub')
         # Create an encryption key for Adobe font obfuscation
         # based on the epub's uid
+        if isinstance(uid,text_type):
+            uid = uid.encode('ascii')
         if obfuscate_data:
-            key = re.sub(r'[^a-fA-F0-9]', '', uid)
+            key = re.sub(br'[^a-fA-F0-9]', b'', uid)
             key = binascii.unhexlify((key + key)[:32])
 
         # copy over all images and fonts that are actually used in the ebook
         # and remove all font files from mobi7 since not supported
-        imgnames = path.listdir(self.imgdir)
+        imgnames = unipath.listdir(self.imgdir)
         for name in imgnames:
             if usedmap.get(name,'not used') == 'used':
                 filein = os.path.join(self.imgdir,name)
@@ -104,7 +120,9 @@ class fileNames:
                     fileout = os.path.join(self.k8fonts,name)
                 else:
                     fileout = os.path.join(self.k8images,name)
-                data = open(pathof(filein),'rb').read()
+                data = b''
+                with open(pathof(filein),'rb') as f:
+                    data = f.read()
                 if obfuscate_data:
                     if name in obfuscate_data:
                         data = mangle_fonts(key, data)
@@ -119,7 +137,8 @@ class fileNames:
         container += '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
         container += '    </rootfiles>\n</container>\n'
         fileout = os.path.join(self.k8metainf,'container.xml')
-        open(pathof(fileout),'wb').write(container)
+        with open(pathof(fileout),'wb') as f:
+            f.write(container.encode('utf-8'))
 
         if obfuscate_data:
             encryption = '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" \
@@ -133,19 +152,19 @@ xmlns:enc="http://www.w3.org/2001/04/xmlenc#" xmlns:deenc="http://ns.adobe.com/d
                 encryption += '  </enc:EncryptedData>\n'
             encryption += '</encryption>\n'
             fileout = os.path.join(self.k8metainf,'encryption.xml')
-            open(pathof(fileout),'wb').write(encryption)
+            with open(pathof(fileout),'wb') as f:
+                f.write(encryption.encode('utf-8'))
 
         # ready to build epub
         self.outzip = zipfile.ZipFile(pathof(bname), 'w')
 
         # add the mimetype file uncompressed
-        mimetype = 'application/epub+zip'
+        mimetype = b'application/epub+zip'
         fileout = os.path.join(self.k8dir,'mimetype')
-        open(pathof(fileout),'wb').write(mimetype)
+        with open(pathof(fileout),'wb') as f:
+            f.write(mimetype)
         nzinfo = ZipInfo('mimetype', compress_type=zipfile.ZIP_STORED)
         self.outzip.writestr(nzinfo, mimetype)
-
         self.zipUpDir(self.outzip,self.k8dir,'META-INF')
-
         self.zipUpDir(self.outzip,self.k8dir,'OEBPS')
         self.outzip.close()

@@ -1,10 +1,22 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-import sys, re
+from __future__ import unicode_literals, division, absolute_import, print_function
+
+import sys
+
+from compatibility_utils import utf8_str, unicode_str
+import codecs
+
+import re
+# note: re requites the pattern to be the exact same type as the data to be searched in python3
+# but u"" is not allowed for the pattern itself only b""
+
 from mobi_utils import fromBase32
 
-_OPF_PARENT_TAGS = ['xml', 'package', 'metadata', 'dc-metadata', 'x-metadata', 'manifest', 'spine', 'tours', 'guide']
+_OPF_PARENT_TAGS = ['xml', 'package', 'metadata', 'dc-metadata',
+                    'x-metadata', 'manifest', 'spine', 'tours', 'guide']
 
 class K8RESCProcessor(object):
 
@@ -26,11 +38,11 @@ class K8RESCProcessor(object):
         self.refines_metadata = []
         self.extra_attributes = []
         # get header
-        start_pos = data.find('<')
+        start_pos = data.find(b'<')
         self.resc_header = data[:start_pos]
         # get resc data length
-        start = self.resc_header.find('=') + 1
-        end = self.resc_header.find('&', start)
+        start = self.resc_header.find(b'=') + 1
+        end = self.resc_header.find(b'&', start)
         resc_size = 0
         if end > 0:
             resc_size = fromBase32(self.resc_header[start:end])
@@ -39,15 +51,15 @@ class K8RESCProcessor(object):
             self.resc_length = resc_size
         else:
             # Most RESC has a nul string at its tail but some do not.
-            end_pos = data.find('\x00', start_pos)
+            end_pos = data.find(b'\x00', start_pos)
             if end_pos < 0:
                 self.resc_length = resc_rawbytes
             else:
                 self.resc_length = end_pos - start_pos
         if self.resc_length != resc_size:
-            print "Warning: RESC section length({:d}bytes) does not match its size({:d}bytes).".format(self.resc_length, resc_size)
-        # now handle RESC
-        self.resc = data[start_pos:start_pos+self.resc_length]
+            print("Warning: RESC section length({:d}bytes) does not match its size({:d}bytes).".format(self.resc_length, resc_size))
+        # now parse RESC after converting it to unicode from utf-8
+        self.resc = unicode_str(data[start_pos:start_pos+self.resc_length])
         self.parseData()
 
 
@@ -56,9 +68,9 @@ class K8RESCProcessor(object):
         self.spine_idrefs[key] = idref
         attributes = {}
         if linear is not None:
-            attributes["linear"] = linear
+            attributes['linear'] = linear
         if properties is not None:
-            attributes["properties"] = properties
+            attributes['properties'] = properties
         self.spine_pageattributes[key] = attributes
 
 
@@ -71,24 +83,24 @@ class K8RESCProcessor(object):
             if text is None and tag is None:
                 break
             if text is not None:
-                tcontent = text.rstrip(" \r\n")
+                tcontent = text.rstrip(' \r\n')
             else: # we have a tag
                 ttype, tname, tattr = self.parsetag(tag)
-                if ttype == "begin":
+                if ttype == 'begin':
                     tcontent = None
                     prefix.append(tname + '.')
                     if tname in _OPF_PARENT_TAGS:
-                        yield "".join(prefix), tname, tattr, tcontent
+                        yield ''.join(prefix), tname, tattr, tcontent
                     else:
                         last_tattr = tattr
                 else: # single or end
-                    if ttype == "end":
+                    if ttype == 'end':
                         prefix.pop()
                         tattr = last_tattr
                         last_tattr = None
                         if tname in _OPF_PARENT_TAGS:
                             tname += '-end'
-                    yield "".join(prefix), tname, tattr, tcontent
+                    yield ''.join(prefix), tname, tattr, tcontent
                     tcontent = None
 
 
@@ -96,38 +108,38 @@ class K8RESCProcessor(object):
     def parseData(self):
         for prefix, tname, tattr, tcontent in self.resc_tag_iter():
             if self._debug:
-                print "   Parsing RESC: ", prefix, tname, tattr, tcontent
-            if tname == "package":
-                self.package_ver = tattr.get("version", "2.0")
-                package_prefix = tattr.get("prefix",'')
-                if self.package_ver.startswith("3") or package_prefix.startswith("rendition"):
+                print("   Parsing RESC: ", prefix, tname, tattr, tcontent)
+            if tname == 'package':
+                self.package_ver = tattr.get('version', '2.0')
+                package_prefix = tattr.get('prefix','')
+                if self.package_ver.startswith('3') or package_prefix.startswith('rendition'):
                     self.need3 = True
-            if tname == "spine":
-                self.spine_ppd = tattr.get("page-progession-direction", None)
-                if self.spine_ppd is not None and self.spine_ppd == "rtl":
+            if tname == 'spine':
+                self.spine_ppd = tattr.get('page-progession-direction', None)
+                if self.spine_ppd is not None and self.spine_ppd == 'rtl':
                     self.need3 = True
-            if tname == "itemref":
-                skelid = tattr.pop("skelid", None)
+            if tname == 'itemref':
+                skelid = tattr.pop('skelid', None)
                 if skelid is None and len(self.spine_order) == 0:
                     # assume it was removed initial coverpage
-                    skelid = "coverpage"
-                    tattr["linear"] = "no"
+                    skelid = 'coverpage'
+                    tattr['linear'] = 'no'
                 self.spine_order.append(skelid)
-                idref = tattr.pop("idref", None)
+                idref = tattr.pop('idref', None)
                 if idref is not None:
                     idref = 'x_' + idref
                 self.spine_idrefs[skelid] = idref
-                if "id" in tattr.keys():
-                    del tattr["id"]
+                if 'id' in tattr:
+                    del tattr['id']
                 # tattr["id"] = 'x_' + tattr["id"]
-                if "properties" in tattr.keys():
+                if 'properties' in tattr:
                     self.need3 = True
                 self.spine_pageattributes[skelid] = tattr
-            if tname == "meta" or tname.startswith("dc:"):
-                if "refines" in tattr.keys() or "property" in tattr.keys():
+            if tname == 'meta' or tname.startswith('dc:'):
+                if 'refines' in tattr or 'property' in tattr:
                     self.need3 = True
-                if tattr.get("name","") == "cover":
-                    cover_name = tattr.get("content",None)
+                if tattr.get('name','') == 'cover':
+                    cover_name = tattr.get('content',None)
                     if cover_name is not None:
                         cover_name = 'x_' + cover_name
                     self.cover_name = cover_name
@@ -176,12 +188,12 @@ class K8RESCProcessor(object):
             p += 1
             while s[p:p+1] == ' ' : p += 1
         b = p
-        while s[p:p+1] not in ('>', '/', ' ', '"', "'","\r","\n") : p += 1
+        while s[p:p+1] not in ('>', '/', ' ', '"', "'",'\r','\n') : p += 1
         tname=s[b:p].lower()
         # some special cases
-        if tname == "?xml":
-            tname = "xml"
-        if tname == "!--":
+        if tname == '?xml':
+            tname = 'xml'
+        if tname == '!--':
             ttype = 'single'
             comment = s[p:-3].strip()
             tattr['comment'] = comment
@@ -218,7 +230,7 @@ class K8RESCProcessor(object):
         tname, tattr, tcontent = taginfo
         res.append('<' + tname)
         if tattr is not None:
-            for key in tattr.keys():
+            for key in tattr:
                 res.append(' ' + key + '="'+tattr[key]+'"' )
         if tcontent is not None:
             res.append('>' + tcontent + '</' + tname + '>\n')
@@ -235,7 +247,7 @@ class K8RESCProcessor(object):
 
     def hasRefines(self):
         for [tname, tattr, tcontent] in self.extrameta:
-            if 'refines' in tattr.keys():
+            if 'refines' in tattr:
                 return True
         return False
 
@@ -243,7 +255,7 @@ class K8RESCProcessor(object):
     def createMetadata(self, epubver):
         for taginfo in self.extrameta:
             tname, tattr, tcontent = taginfo
-            if 'refines' in tattr.keys():
+            if 'refines' in tattr:
                 if epubver == 'F' and 'property' in tattr:
                     attr = ' id="%s" opf:%s="%s"\n' % (tattr['refines'], tattr['property'], tcontent)
                     self.extra_attributes.append(attr)

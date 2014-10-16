@@ -1,8 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
+
+from __future__ import unicode_literals, division, absolute_import, print_function
 
 import sys
-import array, struct, os, re
+from compatibility_utils import PY2, text_type, bchr, bord
+
+import binascii
+
+if PY2:
+    range = xrange
+
+import codecs
+
+import struct
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5, python 3 okay with bytestring
+
+import re
+# note: re requites the pattern to be the exact same type as the data to be searched in python3
+# but u"" is not allowed for the pattern itself only b""
+
+import os, array
 from itertools import cycle
 
 def getLanguage(langID, sublangID):
@@ -95,55 +115,41 @@ def getLanguage(langID, sublangID):
 
 
 def toHex(byteList):
-    '''
-    Convert list of characters into a string of hex values.
+    return binascii.hexlify(byteList)
 
-    @param byteList: List of characters.
-    @return: String with the character hex values separated by spaces.
-    '''
-    return " ".join([hex(ord(c))[2:].zfill(2) for c in byteList])
-
-
-def toBin(value, bits = 8):
-    '''
-    Convert integer value to binary string representation.
-
-    @param value: The integer value.
-    @param bits: The number of bits for the binary string (defaults to 8).
-    @return: String with the binary representation.
-    '''
-    return "".join(map(lambda y:str((value>>y)&1), range(bits-1, -1, -1)))
-
-
+# returns base32 bytestring
 def toBase32(value, npad=4):
-    digits = '0123456789ABCDEFGHIJKLMNOPQRSTUV'
-    num_string=''
+    digits = b'0123456789ABCDEFGHIJKLMNOPQRSTUV'
+    num_string=b''
     current = value
     while current != 0:
         next, remainder = divmod(current, 32)
         rem_string = digits[remainder:remainder+1]
-        num_string=rem_string + num_string
+        num_string = rem_string + num_string
         current=next
-    if num_string == '':
-        num_string = '0'
+    if num_string == b'':
+        num_string = b'0'
     pad = npad - len(num_string)
     if pad > 0:
-        num_string = '0' * pad + num_string
+        num_string = b'0' * pad + num_string
     return num_string
 
 
+# converts base32 string to value
 def fromBase32(str_num):
+    if isinstance(str_num, text_type):
+        str_num = str_num.encode('latin-1')
     scalelst = [1,32,1024,32768,1048576,33554432,1073741824,34359738368]
     value = 0
     j = 0
     n = len(str_num)
     scale = 0
-    for i in xrange(n):
+    for i in range(n):
         c = str_num[n-i-1:n-i]
-        if c in '0123456789':
-            v = (ord(c) - ord('0'))
+        if c in b'0123456789':
+            v = ord(c) - ord(b'0')
         else:
-            v = (ord(c) - ord('A') + 10)
+            v = ord(c) - ord(b'A') + 10
         if j < len(scalelst):
             scale = scalelst[j]
         else:
@@ -154,18 +160,15 @@ def fromBase32(str_num):
     return value
 
 
-def mangle_fonts(encryption_key, data):
-    """
-    encryption_key = tuple(map(ord, encryption_key))
-    encrypted_data_list = []
-    for i in range(1024):
-        encrypted_data_list.append(\
-        chr(ord(data[i]) ^ encryption_key[i%16]))
-    encrypted_data_list.append(data[1024:])
-    return "".join(encrypted_data_list)
-    """
-    crypt = data[:1024]
-    key = cycle(iter(map(ord, encryption_key)))
-    encrypt = ''.join([chr(ord(x)^key.next()) for x in crypt])
-    return encrypt + data[1024:]
+# note: if decode a bytestring using 'latin-1' (or any other 0-255 encoding)
+# in place of ascii you will get a byte to half-word or integer
+# one to one mapping of values from 0 - 255
 
+def mangle_fonts(encryption_key, data):
+    if isinstance(encryption_key, text_type):
+        encryption_key = encryption_key.encode('latin-1')
+    crypt = data[:1024]
+    key = cycle(iter(map(bord, encryption_key)))
+    # encrypt = ''.join([chr(ord(x)^key.next()) for x in crypt])
+    encrypt = b''.join([bchr(bord(x)^next(key)) for x in crypt])
+    return encrypt + data[1024:]

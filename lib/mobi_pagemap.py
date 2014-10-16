@@ -1,7 +1,26 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-import sys, struct, re
+from __future__ import unicode_literals, division, absolute_import, print_function
+
+import sys
+
+from compatibility_utils import PY2, unicode_str
+
+if PY2:
+    range = xrange
+
+import codecs
+
+import struct
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5, python 3 okay with bytestring
+
+import re
+# note: re requites the pattern to be the exact same type as the data to be searched in python3
+# but u"" is not allowed for the pattern itself only b""
+
 
 _TABLE = [('m', 1000), ('cm', 900), ('d', 500), ('cd', 400), ('c', 100), ('xc', 90), ('l', 50), ('xl', 40), ('x', 10), ('ix', 9), ('v', 5), ('iv', 4), ('i', 1)]
 
@@ -28,6 +47,7 @@ _tup_pattern = re.compile(_pattern,re.IGNORECASE)
 
 
 def _parseNames(numpages, data):
+    data = unicode_str(data)
     pagenames = []
     pageMap = ''
     for i in range(numpages):
@@ -38,7 +58,7 @@ def _parseNames(numpages, data):
             pageMap += ','
         pageMap += '(' + tup + ')'
         spos, nametype, svalue = tup.split(",")
-        # print spos, nametype, svalue
+        # print(spos, nametype, svalue)
         if nametype == 'a' or  nametype == 'r':
             svalue = int(svalue)
         spos = int(spos)
@@ -57,7 +77,7 @@ def _parseNames(numpages, data):
                     pname = svalue[0:sp]
                     svalue = svalue[sp+1:]
             else:
-                print "Error: unknown page numbering type", nametype
+                print("Error: unknown page numbering type", nametype)
             pagenames[i] = pname
     return pagenames, pageMap
 
@@ -75,18 +95,18 @@ class PageMapProcessor:
         self.pn_bits = 0
         self.pmoff = None
         self.pmstr = ''
-        print "Extracting Page Map Information"
-        rev_len, = struct.unpack_from('>L', self.data, 0x10)
+        print("Extracting Page Map Information")
+        rev_len, = struct.unpack_from(b'>L', self.data, 0x10)
         # skip over header, revision string length data, and revision string
-        ptr = 0x14 + rev_len 
-        pm_1, self.pm_len, self.pm_nn, self.pm_bits  = struct.unpack_from('>4H', self.data, ptr)
-        # print pm_1, self.pm_len, self.pm_nn, self.pm_bits
+        ptr = 0x14 + rev_len
+        pm_1, self.pm_len, self.pm_nn, self.pm_bits  = struct.unpack_from(b'>4H', self.data, ptr)
+        # print(pm_1, self.pm_len, self.pm_nn, self.pm_bits)
         self.pmstr = self.data[ptr+8:ptr+8+self.pm_len]
         self.pmoff = self.data[ptr+8+self.pm_len:]
-        offsize = ">L"
+        offsize = b">L"
         offwidth = 4
         if self.pm_bits == 16:
-            offsize = ">H"
+            offsize = b">H"
             offwidth = 2
         ptr = 0
         for i in range(self.pm_nn):
@@ -94,7 +114,7 @@ class PageMapProcessor:
             ptr += offwidth
             self.pageoffsets.append(od)
         self.pagenames, self.pageMap = _parseNames(self.pm_nn, self.pmstr)
-        
+
 
     def getPageMap(self):
         return self.pageMap
@@ -106,21 +126,20 @@ class PageMapProcessor:
         return self.pageoffsets
 
 
+    # page-map.xml will be unicode but encoded to utf-8 immediately before being written to a file
     def generateKF8PageMapXML(self, k8proc):
         pagemapxml = '<page-map xmlns="http://www.idpf.org/2007/opf">\n'
-        for i in xrange(len(self.pagenames)):
+        for i in range(len(self.pagenames)):
             pos = self.pageoffsets[i]
             name = self.pagenames[i]
             if name is not None and name != "":
                 [pn, dir, filename, skelpos, skelend, aidtext] = k8proc.getSkelInfo(pos)
-                idtext = k8proc.getPageIDTag(pos)
-                linktgt = filename
+                idtext = unicode_str(k8proc.getPageIDTag(pos))
+                linktgt = unicode_str(filename)
                 if idtext != '':
                     linktgt += '#' + idtext
                 pagemapxml += '<page name="%s" href="%s/%s" />\n' % (name, dir, linktgt)
-        # page-map.xml is encoded utf-8 so must convert any text properly
         pagemapxml += "</page-map>\n"
-        pagemapxml = unicode(pagemapxml, self.mh.codec).encode("utf-8")
         return pagemapxml
 
 
@@ -129,16 +148,18 @@ class PageMapProcessor:
             content_header = '{"contentGuid":"%(contentGuid)s","asin":"%(asin)s","cdeType":"%(cdeType)s","format":"%(format)s","fileRevisionId":"1","acr":"%(acr)s"}' %apnx_meta
         else:
             content_header = '{"contentGuid":"%(contentGuid)s","asin":"%(asin)s","cdeType":"%(cdeType)s","fileRevisionId":"1"}' % apnx_meta
+        content_header = content_header.encode('utf-8')
         page_header = '{"asin":"%(asin)s","pageMap":"%(pageMap)s"}' % apnx_meta
-        apnx = struct.pack('>H',1) + struct.pack('>H',1)
-        apnx += struct.pack('>I', 12 + len(content_header))
-        apnx += struct.pack('>I', len(content_header))
+        page_header = page_header.encode('utf-8')
+        apnx = struct.pack(b'>H',1) + struct.pack(b'>H',1)
+        apnx += struct.pack(b'>I', 12 + len(content_header))
+        apnx += struct.pack(b'>I', len(content_header))
         apnx += content_header
-        apnx += struct.pack('>H', 1)
-        apnx += struct.pack('>H', len(page_header))
-        apnx += struct.pack('>H', self.pm_nn)
-        apnx += struct.pack('>H', 32)
+        apnx += struct.pack(b'>H', 1)
+        apnx += struct.pack(b'>H', len(page_header))
+        apnx += struct.pack(b'>H', self.pm_nn)
+        apnx += struct.pack(b'>H', 32)
         apnx += page_header
         for page in self.pageoffsets:
-            apnx += struct.pack('>L', page)
+            apnx += struct.pack(b'>L', page)
         return apnx
