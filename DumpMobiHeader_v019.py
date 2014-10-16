@@ -215,9 +215,9 @@ class HdrParser:
         self.start = start
         self.version, = struct.unpack_from('>L', self.header, 0x24)
         self.length, = struct.unpack_from('>L',self.header, 0x14)
-        print "Header Version is: 0x%0x" % self.version
-        print "Header start position is: 0x%0x" % self.start
-        print "Header Length is: 0x%0x" % self.length
+        print("Header Version is: 0x%0x" % self.version)
+        print("Header start position is: 0x%0x" % self.start)
+        print("Header Length is: 0x%0x" % self.length)
         # if self.length != 0xf8:
         #     print "Error: Unexpected Header Length: 0x%0x" % self.length
         self.hdr = {}
@@ -250,10 +250,10 @@ class HdrParser:
                     fmt_string = "  Field: %20s   Offset: 0x%03x   Width:  %d   Value: 0x%0" + str(tot_len) + "x"
                 else:
                     fmt_string = "  Field: %20s   Offset: 0x%03x   Width:  %d   Value: %s"
-                print fmt_string % (key, pos, tot_len, self.hdr[key])
-        print "Extra Region Length: 0x%0x" % len(self.extra)
-        print "EXTH Region Length:  0x%0x" % len(self.exth)
-        print "EXTH MetaData"
+                print(fmt_string % (key, pos, tot_len, self.hdr[key]))
+        print("Extra Region Length: 0x%0x" % len(self.extra))
+        print("EXTH Region Length:  0x%0x" % len(self.exth))
+        print("EXTH MetaData")
         self.dump_exth()
         return
 
@@ -347,9 +347,9 @@ class HdrParser:
                 300 : 'Font_Signature_(300_in_hex)',
         }
         _length, num_items = struct.unpack('>LL', extheader[4:12])
-        print "MetaData Header length: 0x%0x" % 12
-        print "MetaData data length  : 0x%0x" %  _length
-        print "Metadata # of items   : 0x%0x" %  num_items
+        print("MetaData Header length: 0x%0x" % 12)
+        print("MetaData data length  : 0x%0x" %  _length)
+        print("Metadata # of items   : 0x%0x" %  num_items)
         extheader = extheader[12:]
         pos = 0
         for _ in range(num_items):
@@ -357,27 +357,27 @@ class HdrParser:
             content = extheader[pos + 8: pos + size]
             if id in id_map_strings.keys():
                 name = id_map_strings[id]
-                print '\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8"))
+                print('\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8")))
             elif id in id_map_values.keys():
                 name = id_map_values[id]
                 if size == 9:
                     value, = struct.unpack('B',content)
-                    print '\n    Key: "%s"\n        Value: 0x%01x' % (name, value)
+                    print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value))
                 elif size == 10:
                     value, = struct.unpack('>H',content)
-                    print '\n    Key: "%s"\n        Value: 0x%02x' % (name, value)
+                    print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value))
                 elif size == 12:
                     value, = struct.unpack('>L',content)
-                    print '\n    Key: "%s"\n        Value: 0x%04x' % (name, value)
+                    print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value))
                 else:
-                    print "\nError: Value for %s has unexpected size of %s" % (name, size)
+                    print("\nError: Value for %s has unexpected size of %s" % (name, size))
             elif id in id_map_hexstrings.keys():
                 name = id_map_hexstrings[id]
-                print '\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+                print('\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex')))
             else:
-                print "\nWarning: Unknown metadata with id %s found" % id
+                print("\nWarning: Unknown metadata with id %s found" % id)
                 name = str(id) + ' (hex)'
-                print '    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+                print('    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex')))
             pos += size
         return
 
@@ -479,50 +479,50 @@ def dump_contexth(cpage, extheader):
         content = extheader[pos + 8: pos + size]
         if id in id_map_strings.keys():
             name = id_map_strings[id]
-            print '\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8"))
+            print('\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8")))
         elif id in id_map_values.keys():
             name = id_map_values[id]
             if size == 9:
                 value, = struct.unpack('B',content)
-                print '\n    Key: "%s"\n        Value: 0x%01x' % (name, value)
+                print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value))
             elif size == 10:
                 value, = struct.unpack('>H',content)
-                print '\n    Key: "%s"\n        Value: 0x%02x' % (name, value)
+                print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value))
             elif size == 12:
                 value, = struct.unpack('>L',content)
-                print '\n    Key: "%s"\n        Value: 0x%04x' % (name, value)
+                print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value))
             else:
-                print "\nError: Value for %s has unexpected size of %s" % (name, size)
+                print("\nError: Value for %s has unexpected size of %s" % (name, size))
         elif id in id_map_hexstrings.keys():
             name = id_map_hexstrings[id]
-            print '\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+            print('\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex')))
         else:
-            print "\nWarning: Unknown metadata with id %s found" % id
+            print("\nWarning: Unknown metadata with id %s found" % id)
             name = str(id) + ' (hex)'
-            print '    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+            print('    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex')))
         pos += size
     return
 
 
 def usage(progname):
-    print ""
-    print "Description:"
-    print "   Dump all mobi headers in the mobi ebook file as generated by the latest kindlegen"
-    print "  "
-    print "Usage:"
-    print "  %s -h infile.mobi" % progname
-    print "  "
-    print "Options:"
-    print "    -h           print this help message"
+    print("")
+    print("Description:")
+    print("   Dump all mobi headers in the mobi ebook file as generated by the latest kindlegen")
+    print("  ")
+    print("Usage:")
+    print("  %s -h infile.mobi" % progname)
+    print("  ")
+    print("Options:")
+    print("    -h           print this help message")
 
 
 def main(argv=sys.argv):
-    print "DumpMobiHeader v018"
+    print("DumpMobiHeader v018")
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")
-    except getopt.GetoptError, err:
-        print str(err)
+    except getopt.GetoptError as err:
+        print(str(err))
         usage(progname)
         sys.exit(2)
 
@@ -537,9 +537,9 @@ def main(argv=sys.argv):
 
     infile = args[0]
     infileext = os.path.splitext(infile)[1].upper()
-    print infile, infileext
+    print(infile, infileext)
     if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW3','.AZW4']:
-        print "Error: first parameter must be a Kindle/Mobipocket ebook."
+        print("Error: first parameter must be a Kindle/Mobipocket ebook.")
         return 1
 
     try:
@@ -555,7 +555,7 @@ def main(argv=sys.argv):
         pp = PalmDB(mobidata)
         header = pp.readsection(0)
 
-        print "\n\nFirst Header Dump from Section %d" % 0
+        print("\n\nFirst Header Dump from Section %d" % 0)
         hp = HdrParser(header, 0)
         hp.dumpHeaderInfo()
         headers[0] = hp
@@ -573,8 +573,8 @@ def main(argv=sys.argv):
                     data = pp.readsection(i)
                     if data == KF8_BOUNDARY:
                         header = pp.readsection(i+1)
-                        print "\n\nMobi Ebook uses the new dual mobi/KF8 file format"
-                        print "\nSecond Header Dump from Section %d" % (i+1)
+                        print("\n\nMobi Ebook uses the new dual mobi/KF8 file format")
+                        print("\nSecond Header Dump from Section %d" % (i+1))
                         hp = HdrParser(header, i+1)
                         hp.dumpHeaderInfo()
                         headers[i+1] = hp
@@ -610,9 +610,9 @@ def main(argv=sys.argv):
         off = -1
         hp = None
         secmap = {}
-        print "\nMap of Palm DB Sections"
-        print "    Dec  - Hex : Description"
-        print "    ---- - ----  -----------"
+        print("\nMap of Palm DB Sections")
+        print("    Dec  - Hex : Description")
+        print("    ---- - ----  -----------")
         for i in xrange(n):
             before, after = pp.getsecaddr(i)
             data = pp.readsection(i)
@@ -665,8 +665,8 @@ def main(argv=sys.argv):
                 if dt == "CONT":
                     cpage, = struct.unpack_from('>L', data, 12)
                     contexth = data[48:]
-                    print "    %04d - %04x: %s [%d]" % (i, i, desc, dlen)
-                    print "Container EXTH Dump"
+                    print("    %04d - %04x: %s [%d]" % (i, i, desc, dlen))
+                    print("Container EXTH Dump")
                     dump_contexth(cpage, contexth)
             elif dt in indmap.keys():
                 desc = "Index"
@@ -676,10 +676,10 @@ def main(argv=sys.argv):
                 desc = dtext.encode('hex')
                 desc = desc + " " + dtext
             if desc != "CONT":
-                print "    %04d - %04x: %s [%d]" % (i, i, desc, dlen)
+                print("    %04d - %04x: %s [%d]" % (i, i, desc, dlen))
 
-    except Exception, e:
-        print "Error: %s" % e
+    except Exception as e:
+        print("Error: %s" % e)
         return 1
 
     return 0

@@ -171,8 +171,8 @@ class MainDialog(Tkinter.Frame):
             w = self.root.winfo_screenwidth()
             h = self.root.winfo_screenheight()
             rootsize = (605, 575)
-            x = w/2 - rootsize[0]/2
-            y = h/2 - rootsize[1]/2
+            x = w//2 - rootsize[0]//2
+            y = h//2 - rootsize[1]//2
             self.root.geometry('%dx%d+%d+%d' % (rootsize + (x, y)))
         self.root.protocol('WM_DELETE_WINDOW', self.quitting)
 
@@ -284,7 +284,7 @@ class MainDialog(Tkinter.Frame):
                 self.p2.terminate()
         if PERSISTENT_PREFS:
             if not saveprefs(CONFIGFILE, self.prefs, self):
-                print 'Couldn\'t save INI file.'
+                print('Couldn\'t save INI file.')
         self.root.destroy()
         self.quit()
 
@@ -359,8 +359,8 @@ def unpackEbook(q, infile, outdir, apnxfile, epubversion, use_hd, dump, writeraw
     rv = 0
     try:
         kindleunpack.unpackBook(infile, outdir, apnxfile, epubversion, use_hd, dodump=dump, dowriteraw=writeraw, dosplitcombos=splitcombos)
-    except Exception, e:
-        print "Error: %s" % e
+    except Exception as e:
+        print("Error: %s" % e)
         rv = 1
     sys.exit(rv)
 
