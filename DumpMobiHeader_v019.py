@@ -1,26 +1,43 @@
 #!/usr/bin/env python
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# -*- coding: utf-8 -*-
+# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-KF8_BOUNDARY = "BOUNDARY"
-""" The section data that divides KF8 mobi ebooks. """
-
-class Unbuffered:
-    def __init__(self, stream):
-        self.stream = stream
-    def write(self, data):
-        self.stream.write(data)
-        self.stream.flush()
-    def __getattr__(self, attr):
-        return getattr(self.stream, attr)
+from __future__ import unicode_literals, division, absolute_import, print_function
 
 import sys
-sys.stdout=Unbuffered(sys.stdout)
+
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    def bchr(s):
+        return bytes([s])
+else:
+    range = xrange
+    def bchr(s):
+        return chr(s)
+
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5
+
+# note: if decode a bytestring using 'latin-1' (or any other 0-255 encoding)
+# in place of ascii you will get a byte to half-word or integer
+# one to one mapping of values from 0 - 255
 
 import os, getopt, struct
 import imghdr
+import binascii
+
+def hexlify(bdata):
+    return (binascii.hexlify(bdata)).decode('ascii')
+
+import traceback
+
+KF8_BOUNDARY = b"BOUNDARY"
+""" The section data that divides KF8 mobi ebooks. """
+
 
 def sortedHeaderKeys(mheader):
-    hdrkeys = sorted(mheader.keys(), key=lambda akey: mheader[akey][0])
+    hdrkeys = sorted(list(mheader.keys()), key=lambda akey: mheader[akey][0])
     return hdrkeys
 
 class dumpHeaderException(Exception):
@@ -34,14 +51,14 @@ class PalmDB:
 
     def __init__(self, palmdata):
         self.data = palmdata
-        self.nsec, = struct.unpack_from('>H',self.data,PalmDB.number_of_pdb_records)
+        self.nsec, = struct.unpack_from(b'>H',self.data,PalmDB.number_of_pdb_records)
 
     def getsecaddr(self,secno):
-        secstart, = struct.unpack_from('>L', self.data, PalmDB.first_pdb_record+secno*8)
+        secstart, = struct.unpack_from(b'>L', self.data, PalmDB.first_pdb_record+secno*8)
         if secno == self.nsec-1:
             secend = len(self.data)
         else:
-            secend, = struct.unpack_from('>L',self.data,PalmDB.first_pdb_record+(secno+1)*8)
+            secend, = struct.unpack_from(b'>L',self.data,PalmDB.first_pdb_record+(secno+1)*8)
         return secstart,secend
 
     def readsection(self,secno):
@@ -54,154 +71,160 @@ class PalmDB:
         return self.nsec
 
 
+# note:  struct pack, unpack, unpack_from all require bytestring format
+# data all the way up to at least python 2.7.5
+
+# note: if decode a bytestring using 'latin-1' (or any other 0-255 encoding)
+# in place of ascii you will get a byte to half-word or integer
+# one to one mapping of values
 
 class HdrParser:
     # all values are packed in big endian format
     mobi6_header = {
-            'compression_type'  : (0x00, '>H', 2),
-            'fill0'             : (0x02, '>H', 2),
-            'text_length'       : (0x04, '>L', 4),
-            'text_records'      : (0x08, '>H', 2),
-            'max_section_size'  : (0x0a, '>H', 2),
-            'crypto_type'       : (0x0c, '>H', 2),
-            'fill1'             : (0x0e, '>H', 2),
-            'magic'             : (0x10, '4s', 4),
-            'header_length'     : (0x14, '>L', 4),
-            'type'              : (0x18, '>L', 4),
-            'codepage'          : (0x1c, '>L', 4),
-            'unique_id'         : (0x20, '>L', 4),
-            'version'           : (0x24, '>L', 4),
-            'metaorthindex'     : (0x28, '>L', 4),
-            'metainflindex'     : (0x2c, '>L', 4),
-            'index_names'       : (0x30, '>L', 4),
-            'index_keys'        : (0x34, '>L', 4),
-            'extra_index0'      : (0x38, '>L', 4),
-            'extra_index1'      : (0x3c, '>L', 4),
-            'extra_index2'      : (0x40, '>L', 4),
-            'extra_index3'      : (0x44, '>L', 4),
-            'extra_index4'      : (0x48, '>L', 4),
-            'extra_index5'      : (0x4c, '>L', 4),
-            'first_nontext'     : (0x50, '>L', 4),
-            'title_offset'      : (0x54, '>L', 4),
-            'title_length'      : (0x58, '>L', 4),
-            'language_code'     : (0x5c, '>L', 4),
-            'dict_in_lang'      : (0x60, '>L', 4),
-            'dict_out_lang'     : (0x64, '>L', 4),
-            'min_version'       : (0x68, '>L', 4),
-            'first_resc_offset' : (0x6c, '>L', 4),
-            'huff_offset'       : (0x70, '>L', 4),
-            'huff_num'          : (0x74, '>L', 4),
-            'huff_tbl_offset'   : (0x78, '>L', 4),
-            'huff_tbl_len'      : (0x7c, '>L', 4),
-            'exth_flags'        : (0x80, '>L', 4),
-            'fill3_a'           : (0x84, '>L', 4),
-            'fill3_b'           : (0x88, '>L', 4),
-            'fill3_c'           : (0x8c, '>L', 4),
-            'fill3_d'           : (0x90, '>L', 4),
-            'fill3_e'           : (0x94, '>L', 4),
-            'fill3_f'           : (0x98, '>L', 4),
-            'fill3_g'           : (0x9c, '>L', 4),
-            'fill3_h'           : (0xa0, '>L', 4),
-            'unknown0'          : (0xa4, '>L', 4),
-            'drm_offset'        : (0xa8, '>L', 4),
-            'drm_count'         : (0xac, '>L', 4),
-            'drm_size'          : (0xb0, '>L', 4),
-            'drm_flags'         : (0xb4, '>L', 4),
-            'fill4_a'           : (0xb8, '>L', 4),
-            'fill4_b'           : (0xbc, '>L', 4),
-            'first_content'     : (0xc0, '>H', 2),
-            'last_content'      : (0xc2, '>H', 2),
-            'unknown0'          : (0xc4, '>L', 4),
-            'fcis_offset'       : (0xc8, '>L', 4),
-            'fcis_count'        : (0xcc, '>L', 4),
-            'flis_offset'       : (0xd0, '>L', 4),
-            'flis_count'        : (0xd4, '>L', 4),
-            'unknown1'          : (0xd8, '>L', 4),
-            'unknown2'          : (0xdc, '>L', 4),
-            'srcs_offset'       : (0xe0, '>L', 4),
-            'srcs_count'        : (0xe4, '>L', 4),
-            'unknown3'          : (0xe8, '>L', 4),
-            'unknown4'          : (0xec, '>L', 4),
-            'fill5'             : (0xf0, '>H', 2),
-            'traildata_flags'   : (0xf2, '>H', 2),
-            'ncx_index'         : (0xf4, '>L', 4),
-            'unknown5'          : (0xf8, '>L', 4),
-            'unknown6'          : (0xfc, '>L', 4),
-            'datp_offset'       : (0x100, '>L', 4),
-            'unknown7'          : (0x104, '>L', 4),
+            'compression_type'  : (0x00, b'>H', 2),
+            'fill0'             : (0x02, b'>H', 2),
+            'text_length'       : (0x04, b'>L', 4),
+            'text_records'      : (0x08, b'>H', 2),
+            'max_section_size'  : (0x0a, b'>H', 2),
+            'crypto_type'       : (0x0c, b'>H', 2),
+            'fill1'             : (0x0e, b'>H', 2),
+            'magic'             : (0x10, b'4s', 4),
+            'header_length'     : (0x14, b'>L', 4),
+            'type'              : (0x18, b'>L', 4),
+            'codepage'          : (0x1c, b'>L', 4),
+            'unique_id'         : (0x20, b'>L', 4),
+            'version'           : (0x24, b'>L', 4),
+            'metaorthindex'     : (0x28, b'>L', 4),
+            'metainflindex'     : (0x2c, b'>L', 4),
+            'index_names'       : (0x30, b'>L', 4),
+            'index_keys'        : (0x34, b'>L', 4),
+            'extra_index0'      : (0x38, b'>L', 4),
+            'extra_index1'      : (0x3c, b'>L', 4),
+            'extra_index2'      : (0x40, b'>L', 4),
+            'extra_index3'      : (0x44, b'>L', 4),
+            'extra_index4'      : (0x48, b'>L', 4),
+            'extra_index5'      : (0x4c, b'>L', 4),
+            'first_nontext'     : (0x50, b'>L', 4),
+            'title_offset'      : (0x54, b'>L', 4),
+            'title_length'      : (0x58, b'>L', 4),
+            'language_code'     : (0x5c, b'>L', 4),
+            'dict_in_lang'      : (0x60, b'>L', 4),
+            'dict_out_lang'     : (0x64, b'>L', 4),
+            'min_version'       : (0x68, b'>L', 4),
+            'first_resc_offset' : (0x6c, b'>L', 4),
+            'huff_offset'       : (0x70, b'>L', 4),
+            'huff_num'          : (0x74, b'>L', 4),
+            'huff_tbl_offset'   : (0x78, b'>L', 4),
+            'huff_tbl_len'      : (0x7c, b'>L', 4),
+            'exth_flags'        : (0x80, b'>L', 4),
+            'fill3_a'           : (0x84, b'>L', 4),
+            'fill3_b'           : (0x88, b'>L', 4),
+            'fill3_c'           : (0x8c, b'>L', 4),
+            'fill3_d'           : (0x90, b'>L', 4),
+            'fill3_e'           : (0x94, b'>L', 4),
+            'fill3_f'           : (0x98, b'>L', 4),
+            'fill3_g'           : (0x9c, b'>L', 4),
+            'fill3_h'           : (0xa0, b'>L', 4),
+            'unknown0'          : (0xa4, b'>L', 4),
+            'drm_offset'        : (0xa8, b'>L', 4),
+            'drm_count'         : (0xac, b'>L', 4),
+            'drm_size'          : (0xb0, b'>L', 4),
+            'drm_flags'         : (0xb4, b'>L', 4),
+            'fill4_a'           : (0xb8, b'>L', 4),
+            'fill4_b'           : (0xbc, b'>L', 4),
+            'first_content'     : (0xc0, b'>H', 2),
+            'last_content'      : (0xc2, b'>H', 2),
+            'unknown0'          : (0xc4, b'>L', 4),
+            'fcis_offset'       : (0xc8, b'>L', 4),
+            'fcis_count'        : (0xcc, b'>L', 4),
+            'flis_offset'       : (0xd0, b'>L', 4),
+            'flis_count'        : (0xd4, b'>L', 4),
+            'unknown1'          : (0xd8, b'>L', 4),
+            'unknown2'          : (0xdc, b'>L', 4),
+            'srcs_offset'       : (0xe0, b'>L', 4),
+            'srcs_count'        : (0xe4, b'>L', 4),
+            'unknown3'          : (0xe8, b'>L', 4),
+            'unknown4'          : (0xec, b'>L', 4),
+            'fill5'             : (0xf0, b'>H', 2),
+            'traildata_flags'   : (0xf2, b'>H', 2),
+            'ncx_index'         : (0xf4, b'>L', 4),
+            'unknown5'          : (0xf8, b'>L', 4),
+            'unknown6'          : (0xfc, b'>L', 4),
+            'datp_offset'       : (0x100, b'>L', 4),
+            'unknown7'          : (0x104, b'>L', 4),
             }
 
     mobi8_header = {
-            'compression_type'  : (0x00, '>H', 2),
-            'fill0'             : (0x02, '>H', 2),
-            'text_length'       : (0x04, '>L', 4),
-            'text_records'      : (0x08, '>H', 2),
-            'max_section_size'  : (0x0a, '>H', 2),
-            'crypto_type'       : (0x0c, '>H', 2),
-            'fill1'             : (0x0e, '>H', 2),
-            'magic'             : (0x10, '4s', 4),
-            'header_length'     : (0x14, '>L', 4),
-            'type'              : (0x18, '>L', 4),
-            'codepage'          : (0x1c, '>L', 4),
-            'unique_id'         : (0x20, '>L', 4),
-            'version'           : (0x24, '>L', 4),
-            'metaorthindex'     : (0x28, '>L', 4),
-            'metainflindex'     : (0x2c, '>L', 4),
-            'index_names'       : (0x30, '>L', 4),
-            'index_keys'        : (0x34, '>L', 4),
-            'extra_index0'      : (0x38, '>L', 4),
-            'extra_index1'      : (0x3c, '>L', 4),
-            'extra_index2'      : (0x40, '>L', 4),
-            'extra_index3'      : (0x44, '>L', 4),
-            'extra_index4'      : (0x48, '>L', 4),
-            'extra_index5'      : (0x4c, '>L', 4),
-            'first_nontext'     : (0x50, '>L', 4),
-            'title_offset'      : (0x54, '>L', 4),
-            'title_length'      : (0x58, '>L', 4),
-            'language_code'     : (0x5c, '>L', 4),
-            'dict_in_lang'      : (0x60, '>L', 4),
-            'dict_out_lang'     : (0x64, '>L', 4),
-            'min_version'       : (0x68, '>L', 4),
-            'first_resc_offset' : (0x6c, '>L', 4),
-            'huff_offset'       : (0x70, '>L', 4),
-            'huff_num'          : (0x74, '>L', 4),
-            'huff_tbl_offset'   : (0x78, '>L', 4),
-            'huff_tbl_len'      : (0x7c, '>L', 4),
-            'exth_flags'        : (0x80, '>L', 4),
-            'fill3_a'           : (0x84, '>L', 4),
-            'fill3_b'           : (0x88, '>L', 4),
-            'fill3_c'           : (0x8c, '>L', 4),
-            'fill3_d'           : (0x90, '>L', 4),
-            'fill3_e'           : (0x94, '>L', 4),
-            'fill3_f'           : (0x98, '>L', 4),
-            'fill3_g'           : (0x9c, '>L', 4),
-            'fill3_h'           : (0xa0, '>L', 4),
-            'unknown0'          : (0xa4, '>L', 4),
-            'drm_offset'        : (0xa8, '>L', 4),
-            'drm_count'         : (0xac, '>L', 4),
-            'drm_size'          : (0xb0, '>L', 4),
-            'drm_flags'         : (0xb4, '>L', 4),
-            'fill4_a'           : (0xb8, '>L', 4),
-            'fill4_b'           : (0xbc, '>L', 4),
-            'fdst_offset'       : (0xc0, '>L', 4),
-            'fdst_flow_count'   : (0xc4, '>L', 4),
-            'fcis_offset'       : (0xc8, '>L', 4),
-            'fcis_count'        : (0xcc, '>L', 4),
-            'flis_offset'       : (0xd0, '>L', 4),
-            'flis_count'        : (0xd4, '>L', 4),
-            'unknown1'          : (0xd8, '>L', 4),
-            'unknown2'          : (0xdc, '>L', 4),
-            'srcs_offset'       : (0xe0, '>L', 4),
-            'srcs_count'        : (0xe4, '>L', 4),
-            'unknown3'          : (0xe8, '>L', 4),
-            'unknown4'          : (0xec, '>L', 4),
-            'fill5'             : (0xf0, '>H', 2),
-            'traildata_flags'   : (0xf2, '>H', 2),
-            'ncx_index'         : (0xf4, '>L', 4),
-            'fragment_index'    : (0xf8, '>L', 4),
-            'skeleton_index'  : (0xfc, '>L', 4),
-            'datp_offset'       : (0x100, '>L', 4),
-            'guide_index'       : (0x104, '>L', 4),
+            'compression_type'  : (0x00, b'>H', 2),
+            'fill0'             : (0x02, b'>H', 2),
+            'text_length'       : (0x04, b'>L', 4),
+            'text_records'      : (0x08, b'>H', 2),
+            'max_section_size'  : (0x0a, b'>H', 2),
+            'crypto_type'       : (0x0c, b'>H', 2),
+            'fill1'             : (0x0e, b'>H', 2),
+            'magic'             : (0x10, b'4s', 4),
+            'header_length'     : (0x14, b'>L', 4),
+            'type'              : (0x18, b'>L', 4),
+            'codepage'          : (0x1c, b'>L', 4),
+            'unique_id'         : (0x20, b'>L', 4),
+            'version'           : (0x24, b'>L', 4),
+            'metaorthindex'     : (0x28, b'>L', 4),
+            'metainflindex'     : (0x2c, b'>L', 4),
+            'index_names'       : (0x30, b'>L', 4),
+            'index_keys'        : (0x34, b'>L', 4),
+            'extra_index0'      : (0x38, b'>L', 4),
+            'extra_index1'      : (0x3c, b'>L', 4),
+            'extra_index2'      : (0x40, b'>L', 4),
+            'extra_index3'      : (0x44, b'>L', 4),
+            'extra_index4'      : (0x48, b'>L', 4),
+            'extra_index5'      : (0x4c, b'>L', 4),
+            'first_nontext'     : (0x50, b'>L', 4),
+            'title_offset'      : (0x54, b'>L', 4),
+            'title_length'      : (0x58, b'>L', 4),
+            'language_code'     : (0x5c, b'>L', 4),
+            'dict_in_lang'      : (0x60, b'>L', 4),
+            'dict_out_lang'     : (0x64, b'>L', 4),
+            'min_version'       : (0x68, b'>L', 4),
+            'first_resc_offset' : (0x6c, b'>L', 4),
+            'huff_offset'       : (0x70, b'>L', 4),
+            'huff_num'          : (0x74, b'>L', 4),
+            'huff_tbl_offset'   : (0x78, b'>L', 4),
+            'huff_tbl_len'      : (0x7c, b'>L', 4),
+            'exth_flags'        : (0x80, b'>L', 4),
+            'fill3_a'           : (0x84, b'>L', 4),
+            'fill3_b'           : (0x88, b'>L', 4),
+            'fill3_c'           : (0x8c, b'>L', 4),
+            'fill3_d'           : (0x90, b'>L', 4),
+            'fill3_e'           : (0x94, b'>L', 4),
+            'fill3_f'           : (0x98, b'>L', 4),
+            'fill3_g'           : (0x9c, b'>L', 4),
+            'fill3_h'           : (0xa0, b'>L', 4),
+            'unknown0'          : (0xa4, b'>L', 4),
+            'drm_offset'        : (0xa8, b'>L', 4),
+            'drm_count'         : (0xac, b'>L', 4),
+            'drm_size'          : (0xb0, b'>L', 4),
+            'drm_flags'         : (0xb4, b'>L', 4),
+            'fill4_a'           : (0xb8, b'>L', 4),
+            'fill4_b'           : (0xbc, b'>L', 4),
+            'fdst_offset'       : (0xc0, b'>L', 4),
+            'fdst_flow_count'   : (0xc4, b'>L', 4),
+            'fcis_offset'       : (0xc8, b'>L', 4),
+            'fcis_count'        : (0xcc, b'>L', 4),
+            'flis_offset'       : (0xd0, b'>L', 4),
+            'flis_count'        : (0xd4, b'>L', 4),
+            'unknown1'          : (0xd8, b'>L', 4),
+            'unknown2'          : (0xdc, b'>L', 4),
+            'srcs_offset'       : (0xe0, b'>L', 4),
+            'srcs_count'        : (0xe4, b'>L', 4),
+            'unknown3'          : (0xe8, b'>L', 4),
+            'unknown4'          : (0xec, b'>L', 4),
+            'fill5'             : (0xf0, b'>H', 2),
+            'traildata_flags'   : (0xf2, b'>H', 2),
+            'ncx_index'         : (0xf4, b'>L', 4),
+            'fragment_index'    : (0xf8, b'>L', 4),
+            'skeleton_index'    : (0xfc, b'>L', 4),
+            'datp_offset'       : (0x100, b'>L', 4),
+            'guide_index'       : (0x104, b'>L', 4),
             }
 
     mobi6_header_sorted_keys = sortedHeaderKeys(mobi6_header)
@@ -213,13 +236,13 @@ class HdrParser:
         # so section 0 is 16 (decimal) + self.length in total == 0x108 bytes for Mobi 8 headers
         self.header = header
         self.start = start
-        self.version, = struct.unpack_from('>L', self.header, 0x24)
-        self.length, = struct.unpack_from('>L',self.header, 0x14)
-        print "Header Version is: 0x%0x" % self.version
-        print "Header start position is: 0x%0x" % self.start
-        print "Header Length is: 0x%0x" % self.length
+        self.version, = struct.unpack_from(b'>L', self.header, 0x24)
+        self.length, = struct.unpack_from(b'>L',self.header, 0x14)
+        print("Header Version is: 0x%0x" % self.version)
+        print("Header start position is: 0x%0x" % self.start)
+        print("Header Length is: 0x%0x" % self.length)
         # if self.length != 0xf8:
-        #     print "Error: Unexpected Header Length: 0x%0x" % self.length
+        #     print("Error: Unexpected Header Length: 0x%0x" % self.length
         self.hdr = {}
         self.extra = self.header[self.length+16:]
         # set it up for the proper header version
@@ -250,10 +273,10 @@ class HdrParser:
                     fmt_string = "  Field: %20s   Offset: 0x%03x   Width:  %d   Value: 0x%0" + str(tot_len) + "x"
                 else:
                     fmt_string = "  Field: %20s   Offset: 0x%03x   Width:  %d   Value: %s"
-                print fmt_string % (key, pos, tot_len, self.hdr[key])
-        print "Extra Region Length: 0x%0x" % len(self.extra)
-        print "EXTH Region Length:  0x%0x" % len(self.exth)
-        print "EXTH MetaData"
+                print(fmt_string % (key, pos, tot_len, self.hdr[key]))
+        print("Extra Region Length: 0x%0x" % len(self.extra))
+        print("EXTH Region Length:  0x%0x" % len(self.exth))
+        print("EXTH MetaData")
         self.dump_exth()
         return
 
@@ -266,9 +289,9 @@ class HdrParser:
                 1252 : 'windows-1252',
                 65001: 'utf-8',
                 }
-        if codepage in codec_map.keys():
+        if codepage in codec_map:
             codec = codec_map[codepage]
-        if self.exth == '':
+        if self.exth == b'':
             return
         extheader = self.exth
         id_map_strings = {
@@ -346,44 +369,44 @@ class HdrParser:
                 209 : 'Tamper_Proof_Keys_(209_in_hex)',
                 300 : 'Font_Signature_(300_in_hex)',
         }
-        _length, num_items = struct.unpack('>LL', extheader[4:12])
-        print "MetaData Header length: 0x%0x" % 12
-        print "MetaData data length  : 0x%0x" %  _length
-        print "Metadata # of items   : 0x%0x" %  num_items
+        _length, num_items = struct.unpack(b'>LL', extheader[4:12])
+        print("MetaData Header length: 0x%0x" % 12)
+        print("MetaData data length  : 0x%0x" %  _length)
+        print("Metadata # of items   : 0x%0x" %  num_items)
         extheader = extheader[12:]
         pos = 0
         for _ in range(num_items):
-            id, size = struct.unpack('>LL', extheader[pos:pos+8])
+            id, size = struct.unpack(b'>LL', extheader[pos:pos+8])
             content = extheader[pos + 8: pos + size]
-            if id in id_map_strings.keys():
+            if id in id_map_strings:
                 name = id_map_strings[id]
-                print '\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8"))
-            elif id in id_map_values.keys():
+                print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec)))
+            elif id in id_map_values:
                 name = id_map_values[id]
                 if size == 9:
-                    value, = struct.unpack('B',content)
-                    print '\n    Key: "%s"\n        Value: 0x%01x' % (name, value)
+                    value, = struct.unpack(b'B',content)
+                    print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value))
                 elif size == 10:
-                    value, = struct.unpack('>H',content)
-                    print '\n    Key: "%s"\n        Value: 0x%02x' % (name, value)
+                    value, = struct.unpack(b'>H',content)
+                    print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value))
                 elif size == 12:
-                    value, = struct.unpack('>L',content)
-                    print '\n    Key: "%s"\n        Value: 0x%04x' % (name, value)
+                    value, = struct.unpack(b'>L',content)
+                    print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value))
                 else:
-                    print "\nError: Value for %s has unexpected size of %s" % (name, size)
-            elif id in id_map_hexstrings.keys():
+                    print("\nError: Value for %s has unexpected size of %s" % (name, size))
+            elif id in id_map_hexstrings:
                 name = id_map_hexstrings[id]
-                print '\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+                print('\n    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
             else:
-                print "\nWarning: Unknown metadata with id %s found" % id
+                print("\nWarning: Unknown metadata with id %s found" % id)
                 name = str(id) + ' (hex)'
-                print '    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+                print('    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
             pos += size
         return
 
 
 
-# this is just guesswork so far, making big assumption that 
+# this is just guesswork so far, making big assumption that
 # metavalue key numbers reamin the same in the CONT EXTH
 def dump_contexth(cpage, extheader):
     # determine text encoding
@@ -392,9 +415,9 @@ def dump_contexth(cpage, extheader):
          1252 : 'windows-1252',
          65001: 'utf-8',
     }
-    if cpage in codec_map.keys():
+    if cpage in codec_map:
         codec = codec_map[cpage]
-    if extheader == '':
+    if extheader == b'':
         return
     id_map_strings = {
            1 : 'Drm Server Id (1)',
@@ -471,58 +494,58 @@ def dump_contexth(cpage, extheader):
            209 : 'Tamper_Proof_Keys_(209_in_hex)',
            300 : 'Font_Signature_(300_in_hex)',
     }
-    _length, num_items = struct.unpack('>LL', extheader[4:12])
+    _length, num_items = struct.unpack(b'>LL', extheader[4:12])
     extheader = extheader[12:]
     pos = 0
     for _ in range(num_items):
-        id, size = struct.unpack('>LL', extheader[pos:pos+8])
+        id, size = struct.unpack(b'>LL', extheader[pos:pos+8])
         content = extheader[pos + 8: pos + size]
-        if id in id_map_strings.keys():
+        if id in id_map_strings:
             name = id_map_strings[id]
-            print '\n    Key: "%s"\n        Value: "%s"' % (name, unicode(content, codec).encode("utf-8"))
-        elif id in id_map_values.keys():
+            print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec)))
+        elif id in id_map_values:
             name = id_map_values[id]
             if size == 9:
-                value, = struct.unpack('B',content)
-                print '\n    Key: "%s"\n        Value: 0x%01x' % (name, value)
+                value, = struct.unpack(b'B',content)
+                print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value))
             elif size == 10:
-                value, = struct.unpack('>H',content)
-                print '\n    Key: "%s"\n        Value: 0x%02x' % (name, value)
+                value, = struct.unpack(b'>H',content)
+                print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value))
             elif size == 12:
-                value, = struct.unpack('>L',content)
-                print '\n    Key: "%s"\n        Value: 0x%04x' % (name, value)
+                value, = struct.unpack(b'>L',content)
+                print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value))
             else:
-                print "\nError: Value for %s has unexpected size of %s" % (name, size)
-        elif id in id_map_hexstrings.keys():
+                print("\nError: Value for %s has unexpected size of %s" % (name, size))
+        elif id in id_map_hexstrings:
             name = id_map_hexstrings[id]
-            print '\n    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+            print('\n    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
         else:
-            print "\nWarning: Unknown metadata with id %s found" % id
+            print("\nWarning: Unknown metadata with id %s found" % id)
             name = str(id) + ' (hex)'
-            print '    Key: "%s"\n        Value: 0x%s' % (name, content.encode('hex'))
+            print('    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
         pos += size
     return
 
 
 def usage(progname):
-    print ""
-    print "Description:"
-    print "   Dump all mobi headers in the mobi ebook file as generated by the latest kindlegen"
-    print "  "
-    print "Usage:"
-    print "  %s -h infile.mobi" % progname
-    print "  "
-    print "Options:"
-    print "    -h           print this help message"
+    print("")
+    print("Description:")
+    print("   Dump all mobi headers in the mobi ebook file as generated by the latest kindlegen")
+    print("  ")
+    print("Usage:")
+    print("  %s -h infile.mobi" % progname)
+    print("  ")
+    print("Options:")
+    print("    -h           print this help message")
 
 
 def main(argv=sys.argv):
-    print "DumpMobiHeader v018"
+    print("DumpMobiHeader v019")
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")
-    except getopt.GetoptError, err:
-        print str(err)
+    except getopt.GetoptError as err:
+        print(str(err))
         usage(progname)
         sys.exit(2)
 
@@ -537,17 +560,18 @@ def main(argv=sys.argv):
 
     infile = args[0]
     infileext = os.path.splitext(infile)[1].upper()
-    print infile, infileext
+    print(infile, infileext)
     if infileext not in ['.MOBI', '.PRC', '.AZW', '.AZW3','.AZW4']:
-        print "Error: first parameter must be a Kindle/Mobipocket ebook."
+        print("Error: first parameter must be a Kindle/Mobipocket ebook.")
         return 1
 
     try:
         # make sure it is really a mobi ebook
-        mobidata = file(infile, 'rb').read()
+        with open(infile, 'rb') as f:
+            mobidata = f.read()
         palmheader = mobidata[0:78]
         ident = palmheader[0x3C:0x3C+8]
-        if ident != 'BOOKMOBI':
+        if ident != b'BOOKMOBI':
             raise dumpHeaderException('invalid file format')
 
         headers = {}
@@ -555,11 +579,11 @@ def main(argv=sys.argv):
         pp = PalmDB(mobidata)
         header = pp.readsection(0)
 
-        print "\n\nFirst Header Dump from Section %d" % 0
+        print("\n\nFirst Header Dump from Section %d" % 0)
         hp = HdrParser(header, 0)
         hp.dumpHeaderInfo()
         headers[0] = hp
-        
+
 
         # next determine if this is a combo (dual) KF8 mobi file
         # we could examine the metadata for exth_121 in the old mobi header
@@ -567,14 +591,14 @@ def main(argv=sys.argv):
         # ONLY do this for combination mobi files
         if hp.version != 8:
             n = pp.getnumsections()
-            for i in xrange(n):
+            for i in range(n):
                 before, after = pp.getsecaddr(i)
                 if (after - before) == 8:
                     data = pp.readsection(i)
                     if data == KF8_BOUNDARY:
                         header = pp.readsection(i+1)
-                        print "\n\nMobi Ebook uses the new dual mobi/KF8 file format"
-                        print "\nSecond Header Dump from Section %d" % (i+1)
+                        print("\n\nMobi Ebook uses the new dual mobi/KF8 file format")
+                        print("\nSecond Header Dump from Section %d" % (i+1))
                         hp = HdrParser(header, i+1)
                         hp.dumpHeaderInfo()
                         headers[i+1] = hp
@@ -583,52 +607,52 @@ def main(argv=sys.argv):
         # now dump a basic sector map of the palmdb
         n = pp.getnumsections()
         dtmap = {
-            "FLIS": "FLIS",
-            "FCIS": "FCIS",
-            "FDST": "FDST",
-            "DATP": "DATP",
-            "BOUN": "BOUNDARY",
-            "FONT": "FONT",
-            "RESC": "RESC",
-            "CRES": "CRES",
-            "CONT": "CONT",
-            chr(0xa0) + chr(0xa0) + chr(0xa0) + chr(0xa0): "Empty_Image/Resource_Placeholder",
-            chr(0xe9) + chr(0x8e) + "\r\n" : "EOF_RECORD",
+            b"FLIS": "FLIS",
+            b"FCIS": "FCIS",
+            b"FDST": "FDST",
+            b"DATP": "DATP",
+            b"BOUN": "BOUNDARY",
+            b"FONT": "FONT",
+            b"RESC": "RESC",
+            b"CRES": "CRES",
+            b"CONT": "CONT",
+            bchr(0xa0) + bchr(0xa0) + bchr(0xa0) + bchr(0xa0): "Empty_Image/Resource_Placeholder",
+            bchr(0xe9) + bchr(0x8e) + b"\r\n" : "EOF_RECORD",
             }
         dtmapext = {
-            "CONTBOUNDARY" : "CONTBOUNDARY",
+            b"CONTBOUNDARY" : "CONTBOUNDARY",
         }
         dtmap2 = {
-            "kindle:embed" : "KINDLE:EMBED",
+            b"kindle:embed" : "KINDLE:EMBED",
         }
         indmap = {
-            "INDX" : "INDX",
-            "IDXT" : "IDXT"
+            b"INDX" : "INDX",
+            b"IDXT" : "IDXT"
             }
         boundary = -1
         tr = -1
         off = -1
         hp = None
         secmap = {}
-        print "\nMap of Palm DB Sections"
-        print "    Dec  - Hex : Description"
-        print "    ---- - ----  -----------"
-        for i in xrange(n):
+        print("\nMap of Palm DB Sections")
+        print("    Dec  - Hex : Description")
+        print("    ---- - ----  -----------")
+        for i in range(n):
             before, after = pp.getsecaddr(i)
             data = pp.readsection(i)
             dlen = len(data)
             dt = data[0:4]
             dtext = data[0:12]
-            desc = '' 
+            desc = ''
             imgtype = imghdr.what(None, data)
-            if i in headers.keys():
+            if i in headers:
                 hp = headers[i]
                 off =  i
                 version = hp.hdr['version']
                 desc = "HEADER %d" % version
                 # update known section map
                 tr = hp.hdr['text_records']
-                for j in xrange(tr):
+                for j in range(tr):
                     secmap[j + off + 1] = "Text Record %d" % j
                 ncx_index = hp.hdr.get('ncx_index', 0xffffffff)
                 if ncx_index != 0xffffffff:
@@ -652,39 +676,39 @@ def main(argv=sys.argv):
                 srcs_offset = hp.hdr.get('srcs_offset', 0xffffffff)
                 if srcs_offset != 0xffffffff:
                     srcs_count = hp.hdr['srcs_count']
-                    for j in xrange(srcs_count):
+                    for j in range(srcs_count):
                         secmap[j + srcs_offset + off] = 'Source Archive %d' % j
-            elif i in secmap.keys():
+            elif i in secmap:
                 desc = secmap[i]
-            elif dtext in dtmapext.keys():
+            elif dtext in dtmapext:
                 desc = dtmapext[dtext]
-            elif dtext in dtmap2.keys():
-                desc = data
-            elif dt in dtmap.keys():
+            elif dtext in dtmap2:
+                desc = data.decode('ascii')
+            elif dt in dtmap:
                 desc = dtmap[dt]
-                if dt == "CONT":
-                    cpage, = struct.unpack_from('>L', data, 12)
+                if dt == b"CONT":
+                    cpage, = struct.unpack_from(b'>L', data, 12)
                     contexth = data[48:]
-                    print "    %04d - %04x: %s [%d]" % (i, i, desc, dlen)
-                    print "Container EXTH Dump"
+                    print("    %04d - %04x: %s [%d]" % (i, i, desc, dlen))
+                    print("Container EXTH Dump")
                     dump_contexth(cpage, contexth)
-            elif dt in indmap.keys():
+            elif dt in indmap:
                 desc = "Index"
             elif imgtype is not None:
                 desc = "Image " + imgtype
             else:
-                desc = dtext.encode('hex')
-                desc = desc + " " + dtext
+                desc = hexlify(dtext)
+                desc = desc + " " + dtext.decode('ascii')
             if desc != "CONT":
-                print "    %04d - %04x: %s [%d]" % (i, i, desc, dlen)
+                print("    %04d - %04x: %s [%d]" % (i, i, desc, dlen))
 
-    except Exception, e:
-        print "Error: %s" % e
+    except Exception as e:
+        print("Error: %s" % e)
+        print(traceback.format_exc())
         return 1
 
     return 0
 
 
 if __name__ == '__main__':
-    sys.stdout=Unbuffered(sys.stdout)
     sys.exit(main())
