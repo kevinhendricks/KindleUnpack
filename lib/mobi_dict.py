@@ -85,7 +85,7 @@ class dictSupport(object):
             # we only ever seem to use the second but ...
             #
             # if otype = 0, ORDT table uses 16 bit values as offsets into the table
-            # if otype = 1, ORDT table uses 8 bit values as offsets inot the table 
+            # if otype = 1, ORDT table uses 8 bit values as offsets inot the table
 
             assert(data[op1:op1+4] == b'ORDT')
             assert(data[op2:op2+4] == b'ORDT')
@@ -124,7 +124,7 @@ class dictSupport(object):
                 for j in range(metaIndexCount):
                     idatas.append(sect.loadSection(metaInflIndex + 1 + j))
                 dinfl = InflectionData(idatas)
-                
+
                 inflNameData = sect.loadSection(metaInflIndex + 1 + metaIndexCount)
                 tagSectionStart = midxhdr['len']
                 inflectionControlByteCount, inflectionTagTable = readTagSection(tagSectionStart, metaInflIndexData)
@@ -189,7 +189,7 @@ class dictSupport(object):
                     tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     if 0x01 in tagMap:
                         if decodeInflection and 0x2a in tagMap:
-                            inflectionGroups = self.getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable, 
+                            inflectionGroups = self.getInflectionGroups(text, inflectionControlByteCount, inflectionTagTable,
                                                                         dinfl, inflNameData, tagMap[0x2a])
                         else:
                             inflectionGroups = ""
@@ -365,4 +365,3 @@ class dictSupport(object):
                 print "Error: Inflection rule mode %x is not implemented" % byte
                 return None
         return byteArray.tostring()
-

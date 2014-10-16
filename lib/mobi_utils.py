@@ -168,4 +168,3 @@ def mangle_fonts(encryption_key, data):
     key = cycle(iter(map(ord, encryption_key)))
     encrypt = ''.join([chr(ord(x)^key.next()) for x in crypt])
     return encrypt + data[1024:]
-

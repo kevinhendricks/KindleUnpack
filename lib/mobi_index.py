@@ -263,5 +263,3 @@ def getTagMap(controlByteCount, tagTable, entryData, startPos, endPos):
                 break
 
     return tagHashMap
-
-

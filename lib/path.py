@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# When using bytestrings in Python 2,  Windows requires full unicode 
-# filenames and paths.  Therefore any bytestring paths *must* be utf-8 
-# encoded as they will need to be converted on the fly to full unicode 
-# for Windows platforms.  
-# 
+# When using bytestrings in Python 2,  Windows requires full unicode
+# filenames and paths.  Therefore any bytestring paths *must* be utf-8
+# encoded as they will need to be converted on the fly to full unicode
+# for Windows platforms.
+#
 # Both Linunx and Mac OS X platforms will happily support utf-8 encoded paths
 #
-# These are simple support routines to ease use of utf-8 encoded bytestrings 
-# as paths in main program to be converted on the fly to full unicode as 
-# temporary un-named values to prevent the potential for inadvertent mixing 
-# of unicode and bytestring and auto promotion issues elsewhere in the main 
-# program 
+# These are simple support routines to ease use of utf-8 encoded bytestrings
+# as paths in main program to be converted on the fly to full unicode as
+# temporary un-named values to prevent the potential for inadvertent mixing
+# of unicode and bytestring and auto promotion issues elsewhere in the main
+# program
 #
 # These include routines for path manipulation and encoding and decoding uri/iri
 

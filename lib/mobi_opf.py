@@ -585,7 +585,7 @@ class OPFProcessor(object):
             needRefinesId = self.k8resc.hasRefines()
         # Create id for rifine attributes
         if (needRefinesId or EXTH_TITLE_FURIGANA in metadata.keys()) and 'Title' in metadata.keys():
-          for i in range(len(metadata.get('Title'))):
+            for i in range(len(metadata.get('Title'))):
                 self.title_id[i] = 'title%02d' % (i+1)
 
         if (needRefinesId or EXTH_CREATOR_FURIGANA in metadata.keys()) and 'Creator' in metadata.keys():

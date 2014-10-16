@@ -10,7 +10,7 @@ _guide_types = ['cover','title-page','toc','index','glossary','acknowledgements'
                 'bibliography','colophon','copyright-page','dedication',
                 'epigraph','foreward','loi','lot','notes','preface','text']
 
-# locate beginning and ending positions of tag with specific aid attribute 
+# locate beginning and ending positions of tag with specific aid attribute
 def locate_beg_end_of_tag(ml, aid):
     pattern = r'''<[^>]*\said\s*=\s*['"]%s['"][^>]*>''' % aid
     aid_pattern = re.compile(pattern,re.IGNORECASE)
@@ -64,7 +64,7 @@ class K8Processor:
                 if self.DEBUG:
                     print "\nFDST Section Map:  %d sections" % num_sections
                     for j in xrange(num_sections):
-                         print "Section %d: 0x%08X - 0x%08X" % (j, self.fdsttbl[j],self.fdsttbl[j+1])
+                        print "Section %d: 0x%08X - 0x%08X" % (j, self.fdsttbl[j],self.fdsttbl[j+1])
             else:
                 print "\nError: K8 Mobi with Missing FDST info"
 
@@ -452,7 +452,7 @@ class K8Processor:
             else:
                 pend = max(pend1, pend2)
             if pend != -1:
-                npos = pend 
+                npos = pend
             else:
                 npos = pgt + 1
         # find id and name attributes only inside of tags
@@ -473,5 +473,3 @@ class K8Processor:
                 if m is not None:
                     return m.group(1)
         return ''
-
-

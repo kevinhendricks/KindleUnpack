@@ -24,7 +24,7 @@ def utf8_argv():
     if iswindows:
         # Versions 2.x of Python don't support Unicode in sys.argv on
         # Windows, with the underlying Windows API instead replacing multi-byte
-        # characters with '?'.  So use shell32.GetCommandLineArgvW to get sys.argv 
+        # characters with '?'.  So use shell32.GetCommandLineArgvW to get sys.argv
         # as a list of Unicode strings and encode them as utf-8
 
         from ctypes import POINTER, byref, cdll, c_int, windll
@@ -73,7 +73,7 @@ def add_cp65001_codec():
     return
 
 
-# Almost all sane operating systems now default to utf-8 as the 
+# Almost all sane operating systems now default to utf-8 as the
 # proper default encoding so that all files and path names
 # in any language can be properly represented.
 #
@@ -114,4 +114,3 @@ def set_utf8_default_encoding():
     except locale.Error:
         pass
     return
-

@@ -37,7 +37,7 @@ def getprefs(configfile, tkobj, PERSIST):
             return prefs
         # Python 2.x's ConfigParser module will not save unicode strings to an ini file (at least on Windows)
         # no matter how hard you try to smack it around and scare it into doing so.
-        # The workaround (to support unicode path prefences) is to encode the file path using the 
+        # The workaround (to support unicode path prefences) is to encode the file path using the
         # unicode_escape 'codec' when writing, and to decode using the unicode_escape codec when reading.
         if config.has_option('Defaults', 'mobipath'):
             prefs['mobipath'] = config.get('Defaults', 'mobipath').decode('unicode_escape')

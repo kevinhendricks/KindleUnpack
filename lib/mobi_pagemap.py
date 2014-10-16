@@ -78,7 +78,7 @@ class PageMapProcessor:
         print "Extracting Page Map Information"
         rev_len, = struct.unpack_from('>L', self.data, 0x10)
         # skip over header, revision string length data, and revision string
-        ptr = 0x14 + rev_len 
+        ptr = 0x14 + rev_len
         pm_1, self.pm_len, self.pm_nn, self.pm_bits  = struct.unpack_from('>4H', self.data, ptr)
         # print pm_1, self.pm_len, self.pm_nn, self.pm_bits
         self.pmstr = self.data[ptr+8:ptr+8+self.pm_len]
@@ -94,7 +94,7 @@ class PageMapProcessor:
             ptr += offwidth
             self.pageoffsets.append(od)
         self.pagenames, self.pageMap = _parseNames(self.pm_nn, self.pmstr)
-        
+
 
     def getPageMap(self):
         return self.pageMap

@@ -65,7 +65,7 @@ class HTMLProcessor:
         # put in the hrefs
         print "Insert hrefs into html"
         # There doesn't seem to be a standard, so search as best as we can
-        
+
         link_pattern = re.compile(r'''<a([^>]*?)filepos=['"]{0,1}0*(\d+)['"]{0,1}([^>]*?)>''', re.IGNORECASE)
         srctext = link_pattern.sub(r'''<a\1href="#filepos\2"\3>''', srctext)
 
@@ -73,7 +73,7 @@ class HTMLProcessor:
         print "Remove empty anchors from html"
         srctext = re.sub(r"<a\s*/>",r"", srctext)
         srctext = re.sub(r"<a\s*>\s*</a>",r"", srctext)
-        
+
         # convert image references
         print "Insert image references into html"
         # split string into image tag pieces and other pieces

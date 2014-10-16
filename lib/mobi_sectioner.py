@@ -105,4 +105,3 @@ class Sectionizer:
     def loadSection(self, section):
         before, after = self.sectionoffsets[section:section+2]
         return self.data[before:after]
-

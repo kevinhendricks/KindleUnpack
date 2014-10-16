@@ -10,7 +10,7 @@ import struct, re
 import uuid
 
 # import the mobiunpack support libraries
-from mobi_utils import getLanguage 
+from mobi_utils import getLanguage
 from mobi_uncompress import HuffcdicReader, PalmdocReader, UncompressedReader
 
 class unpackException(Exception):
@@ -23,7 +23,7 @@ def sortedHeaderKeys(mheader):
 
 
 # HD Containers have their own headers and their own EXTH
-# this is just guesswork so far, making big assumption that 
+# this is just guesswork so far, making big assumption that
 # metavalue key numbers remain the same in the CONT EXTH
 
 # Note:  The layout of the CONT Header is still unknown
@@ -380,7 +380,7 @@ class MobiHeader:
         524 : 'Language_524',
         525 : 'primary-writing-mode',
         527 : 'page-progression-direction',
-        528 : 'override-kindle-fonts', 
+        528 : 'override-kindle-fonts',
         529 : 'kindlegen_Source-Target',
         534 : 'kindlegen_Input_Source_Type',
         535 : 'kindlegen_BuildRev_Number',
@@ -390,7 +390,7 @@ class MobiHeader:
         542 : 'Unknown_but_changes_with_file_name_only_542',
         543 : 'Container_id',  # FONT_CONTAINER, BW_CONTAINER, HD_CONTAINER
         544 : 'Unknown_544',
- 
+
     }
     id_map_values = {
         115 : 'sample',
