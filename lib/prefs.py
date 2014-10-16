@@ -24,8 +24,8 @@ def getprefs(configfile, tkobj, PERSIST):
     w = tkobj.winfo_screenwidth()
     h = tkobj.winfo_screenheight()
     rootsize = (605, 575)
-    x = w/2 - rootsize[0]/2
-    y = h/2 - rootsize[1]/2
+    x = w//2 - rootsize[0]//2
+    y = h//2 - rootsize[1]//2
     prefs['windowgeometry'] = (u'%dx%d+%d+%d' % (rootsize + (x, y)))
 
     if os.path.exists(configfile) and PERSIST:
