@@ -11,13 +11,13 @@ from mobi_utils import fromBase32
 
 class HTMLProcessor:
 
-    def __init__(self, files, metadata, imgnames):
+    def __init__(self, files, metadata, rscnames):
         self.files = files
         self.metadata = metadata
-        self.imgnames = imgnames
+        self.rscnames = rscnames
         # for original style mobis, default to including all image files in the opf manifest
         self.used = {}
-        for name in imgnames:
+        for name in rscnames:
             self.used[name] = 'used'
 
     def findAnchors(self, rawtext, indx_data, positionMap):
@@ -58,7 +58,7 @@ class HTMLProcessor:
 
     def insertHREFS(self):
         srctext = self.srctext
-        imgnames = self.imgnames
+        rscnames = self.rscnames
         metadata = self.metadata
 
         # put in the hrefs
@@ -86,7 +86,7 @@ class HTMLProcessor:
             tag = srcpieces[i]
             for m in image_index_pattern.finditer(tag):
                 imageNumber = int(m.group(1))
-                imageName = imgnames[imageNumber-1]
+                imageName = rscnames[imageNumber-1]
                 if imageName is None:
                     print "Error: Referenced image %s was not recognized as a valid image" % imageNumber
                 else:
@@ -103,8 +103,8 @@ class HTMLProcessor:
 
 class XHTMLK8Processor:
 
-    def __init__(self, imgnames, k8proc):
-        self.imgnames = imgnames
+    def __init__(self, rscnames, k8proc):
+        self.rscnames = rscnames
         self.k8proc = k8proc
         self.used = {}
 
@@ -213,7 +213,7 @@ class XHTMLK8Processor:
                 if tag.startswith('<im'):
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
-                        imageName = self.imgnames[imageNumber-1]
+                        imageName = self.rscnames[imageNumber-1]
                         if imageName is not None:
                             replacement = '"../Images/' + imageName + '"'
                             self.used[imageName] = 'used'
@@ -231,7 +231,7 @@ class XHTMLK8Processor:
                 #  process links to raster image files
                 for m in url_img_index_pattern.finditer(tag):
                     imageNumber = fromBase32(m.group(1))
-                    imageName = self.imgnames[imageNumber-1]
+                    imageName = self.rscnames[imageNumber-1]
                     osep = m.group()[0]
                     csep = m.group()[-1]
                     if imageName is not None:
@@ -244,7 +244,7 @@ class XHTMLK8Processor:
                 # process links to fonts
                 for m in font_index_pattern.finditer(tag):
                     fontNumber = fromBase32(m.group(1))
-                    fontName = self.imgnames[fontNumber-1]
+                    fontName = self.rscnames[fontNumber-1]
                     osep = m.group()[0]
                     csep = m.group()[-1]
                     if fontName is None:
@@ -340,7 +340,7 @@ class XHTMLK8Processor:
                 if 'kindle:embed' in tag:
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
-                        imageName = self.imgnames[imageNumber-1]
+                        imageName = self.rscnames[imageNumber-1]
                         osep = m.group()[0]
                         csep = m.group()[-1]
                         if imageName is not None:
@@ -372,7 +372,7 @@ class XHTMLK8Processor:
                 if tag.startswith('<im'):
                     for m in img_index_pattern.finditer(tag):
                         imageNumber = fromBase32(m.group(1))
-                        imageName = self.imgnames[imageNumber-1]
+                        imageName = self.rscnames[imageNumber-1]
                         if imageName is not None:
                             replacement = '"../Images/' + imageName + '"'
                             self.used[imageName] = 'used'

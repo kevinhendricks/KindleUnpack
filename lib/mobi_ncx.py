@@ -169,8 +169,9 @@ class ncxExtract:
         # build the xml
         self.isNCX = True
         print "Write ncx"
-        htmlname = os.path.basename(self.files.outbase)
-        htmlname += '.html'
+        # htmlname = os.path.basename(self.files.outbase)
+        # htmlname += '.html'
+        htmlname = 'book.html'
         xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0], metadata.get('Language')[0])
         # write the ncx file
         # ncxname = os.path.join(self.files.mobi7dir, self.files.getInputFileBasename() + '.ncx')
