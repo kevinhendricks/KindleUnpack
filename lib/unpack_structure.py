@@ -3,7 +3,7 @@
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
 from __future__ import unicode_literals, division, absolute_import, print_function
-import sys
+
 from compatibility_utils import text_type
 
 import unipath
@@ -13,17 +13,12 @@ DUMP = False
 """ Set to True to dump all possible information. """
 
 import os
-import codecs
-
-import struct
-# note:  struct pack, unpack, unpack_from all require bytestring format
-# data all the way up to at least python 2.7.5, python 3 okay with bytestring
 
 import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
 
-import zlib, zipfile
+import zipfile
 import binascii
 from mobi_utils import mangle_fonts
 
@@ -31,6 +26,7 @@ class unpackException(Exception):
     pass
 
 class ZipInfo(zipfile.ZipInfo):
+
     def __init__(self, *args, **kwargs):
         if 'compress_type' in kwargs:
             compress_type = kwargs.pop('compress_type')
@@ -38,27 +34,27 @@ class ZipInfo(zipfile.ZipInfo):
         self.compress_type = compress_type
 
 class fileNames:
+
     def __init__(self, infile, outdir):
         self.infile = infile
         self.outdir = outdir
-        if not unipath.exists(outdir):
-            unipath.mkdir(outdir)
-        self.mobi7dir = os.path.join(outdir,'mobi7')
+        if not unipath.exists(self.outdir):
+            unipath.mkdir(self.outdir)
+        self.mobi7dir = os.path.join(self.outdir,'mobi7')
         if not unipath.exists(self.mobi7dir):
             unipath.mkdir(self.mobi7dir)
         self.imgdir = os.path.join(self.mobi7dir, 'Images')
         if not unipath.exists(self.imgdir):
             unipath.mkdir(self.imgdir)
-        self.hdimgdir = os.path.join(outdir,'HDImages')
+        self.hdimgdir = os.path.join(self.outdir,'HDImages')
         if not unipath.exists(self.hdimgdir):
             unipath.mkdir(self.hdimgdir)
-        self.outbase = os.path.join(outdir, os.path.splitext(os.path.split(infile)[1])[0])
+        self.outbase = os.path.join(self.outdir, os.path.splitext(os.path.split(infile)[1])[0])
 
     def getInputFileBasename(self):
         return os.path.splitext(os.path.basename(self.infile))[0]
 
     def makeK8Struct(self):
-        outdir = self.outdir
         self.k8dir = os.path.join(self.outdir,'mobi8')
         if not unipath.exists(self.k8dir):
             unipath.mkdir(self.k8dir)

@@ -4,15 +4,12 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
 from compatibility_utils import PY2, unicode_str, hexlify, bord
 
 if PY2:
     range = xrange
 
-import os
-import codecs
-import struct, re
+import struct
 import uuid
 
 # import the mobiunpack support libraries
@@ -93,7 +90,7 @@ def dump_contexth(cpage, extheader):
         529 : 'Unknown_(529)',
         534 : 'Input_Source_Type_(534)',
         535 : 'Kindlegen_BuildRev_Number_(535)',
-        536 : 'Container_Info_(536)', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        536 : 'Container_Info_(536)',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Container_Resolution_(538)',
         539 : 'Container_Mimetype_(539)',
         542 : 'Unknown_but_changes_with_file_name_only_(542)',
@@ -135,20 +132,20 @@ def dump_contexth(cpage, extheader):
             name = id_map_values[id]
             if size == 9:
                 value, = struct.unpack(b'B',content)
-                print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value) )
+                print('\n    Key: "%s"\n        Value: 0x%01x' % (name, value))
             elif size == 10:
                 value, = struct.unpack(b'>H',content)
-                print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value) )
+                print('\n    Key: "%s"\n        Value: 0x%02x' % (name, value))
             elif size == 12:
                 value, = struct.unpack(b'>L',content)
-                print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value) )
+                print('\n    Key: "%s"\n        Value: 0x%04x' % (name, value))
             else:
                 print("\nError: Value for %s has unexpected size of %s" % (name, size))
         elif id in id_map_hexstrings:
             name = id_map_hexstrings[id]
             print('\n    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
         else:
-            print("\nWarning: Unknown metadata with id %s found" % id )
+            print("\nWarning: Unknown metadata with id %s found" % id)
             name = str(id) + ' (hex)'
             print('    Key: "%s"\n        Value: 0x%s' % (name, hexlify(content)))
         pos += size
@@ -390,7 +387,7 @@ class MobiHeader:
         529 : 'kindlegen_Source-Target',
         534 : 'kindlegen_Input_Source_Type',
         535 : 'kindlegen_BuildRev_Number',
-        536 : 'Container_Info', # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
+        536 : 'Container_Info',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Container_Resolution',
         539 : 'Container_Mimetype',
         542 : 'Unknown_but_changes_with_file_name_only_542',
@@ -501,7 +498,6 @@ class MobiHeader:
         if self.codepage in codec_map:
             self.codec = codec_map[self.codepage]
 
-
         # title
         toff, tlen = struct.unpack(b'>II', self.header[0x54:0x5c])
         tend = toff + tlen
@@ -513,7 +509,7 @@ class MobiHeader:
         self.exth_length = 0
         if self.hasExth:
             self.exth_length, = struct.unpack_from(b'>L', self.header, self.exth_offset+4)
-            self.exth_length = ((self.exth_length + 3)>>2)<<2 # round to next 4 byte boundary
+            self.exth_length = ((self.exth_length + 3)>>2)<<2  # round to next 4 byte boundary
             self.exth = self.header[self.exth_offset:self.exth_offset+self.exth_length]
 
         # parse the exth / metadata
@@ -669,7 +665,6 @@ class MobiHeader:
         self.extra1 = self.header[self.exth_offset+self.exth_length:title_offset]
         self.extra2 = self.header[title_offset+title_length:]
 
-
         print("Mobipocket header from section %d" % self.start)
         print("     Offset  Value Hex Dec        Description")
         for key in self.mobi_header_sorted_keys:
@@ -701,7 +696,6 @@ class MobiHeader:
             print("Extra data between Title and end of header, length %d" % len(self.extra2))
             print(hexlify(self.extra2))
             print("")
-
 
     def isPrintReplica(self):
         return self.mlstart[0:4] == b"%MOP"
@@ -793,7 +787,6 @@ class MobiHeader:
         self.rawSize = len(rawML)
         return rawML
 
-
     # all metadata is stored in a dictionary with key and returns a *list* of values
     # a list is used to allow for multiple creators, multiple contributors, etc
     def parseMetaData(self):
@@ -857,12 +850,11 @@ class MobiHeader:
     def getMetaData(self):
         return self.metadata
 
-
     def describeHeader(self, DUMP):
         print("Mobi Version:", self.version)
         print("Codec:", self.codec)
         print("Title:", self.title)
-        if 'Updated_Title'  in self.metadata:
+        if 'Updated_Title' in self.metadata:
             print("EXTH Title:", self.metadata['Updated_Title'][0])
         if self.compression == 0x4448:
             print("Huffdic compression")

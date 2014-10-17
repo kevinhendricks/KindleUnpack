@@ -4,10 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
 import os
-import codecs
-from compatibility_utils import unicode_str
 from unipath import pathof
 
 
@@ -21,6 +18,7 @@ from mobi_index import MobiIndex
 DEBUG_NCX = False
 
 class ncxExtract:
+
     def __init__(self, mh, files):
         self.mh = mh
         self.sect = self.mh.sect
@@ -98,7 +96,6 @@ class ncxExtract:
         self.indx_data = indx_data
         return indx_data
 
-
     def buildNCX(self, htmlfile, title, ident, lang):
         indx_data = self.indx_data
 
@@ -130,7 +127,7 @@ class ncxExtract:
 </navLabel>
 <content src="%s"/>'''
 
-        #recursive part
+        # recursive part
         def recursINDX(max_lvl=0, num=0, lvl=0, start=-1, end=-1):
             if start>len(indx_data) or end>len(indx_data):
                 print("Warning: missing INDX child entries", start, end, len(indx_data))
@@ -150,19 +147,19 @@ class ncxExtract:
                 e = indx_data[i]
                 if not e['hlvl'] == lvl:
                     continue
-                #open entry
+                # open entry
                 num += 1
                 link = '%s#filepos%d' % (htmlfile, e['pos'])
                 tagid = 'np_%d' % num
                 entry = ncx_entry % (tagid, num, e['text'], link)
                 entry = re.sub(re.compile('^', re.M), indent, entry, 0)
                 xml += entry + '\n'
-                #recurs
+                # recurs
                 if e['child1']>=0:
-                    xmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,\
+                    xmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,
                             e['child1'], e['childn'] + 1)
                     xml += xmlrec
-                #close entry
+                # close entry
                 xml += indent + '</navPoint>\n'
             return xml, max_lvl, num
 
@@ -177,8 +174,8 @@ class ncxExtract:
         # build the xml
         self.isNCX = True
         print("Write ncx")
-        #htmlname = os.path.basename(self.files.outbase)
-        #htmlname += '.html'
+        # htmlname = os.path.basename(self.files.outbase)
+        # htmlname += '.html'
         htmlname = 'book.html'
         xml = self.buildNCX(htmlname, metadata['Title'][0], metadata['UniqueID'][0], metadata.get('Language')[0])
         # write the ncx file
@@ -186,7 +183,6 @@ class ncxExtract:
         ncxname = os.path.join(self.files.mobi7dir, 'toc.ncx')
         with open(pathof(ncxname), 'wb') as f:
             f.write(xml.encode('utf-8'))
-
 
     def buildK8NCX(self, indx_data, title, ident, lang):
         ncx_header = \
@@ -217,7 +213,7 @@ class ncxExtract:
 </navLabel>
 <content src="%s"/>'''
 
-        #recursive part
+        # recursive part
         def recursINDX(max_lvl=0, num=0, lvl=0, start=-1, end=-1):
             if start>len(indx_data) or end>len(indx_data):
                 print("Warning: missing INDX child entries", start, end, len(indx_data))
@@ -239,7 +235,7 @@ class ncxExtract:
                 desttag = e['idtag']
                 if not e['hlvl'] == lvl:
                     continue
-                #open entry
+                # open entry
                 num += 1
                 if desttag == '':
                     link = 'Text/%s' % htmlfile
@@ -249,12 +245,12 @@ class ncxExtract:
                 entry = ncx_entry % (tagid, num, e['text'], link)
                 entry = re.sub(re.compile('^', re.M), indent, entry, 0)
                 xml += entry + '\n'
-                #recurs
+                # recurs
                 if e['child1']>=0:
-                    xmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,\
+                    xmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,
                             e['child1'], e['childn'] + 1)
                     xml += xmlrec
-                #close entry
+                # close entry
                 xml += indent + '</navPoint>\n'
             return xml, max_lvl, num
 

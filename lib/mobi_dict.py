@@ -4,8 +4,6 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
-
 from compatibility_utils import PY2, PY3, utf8_str, bstr, bchr
 
 if PY2:
@@ -15,19 +13,19 @@ if PY3:
     unichr = chr
     array_format = "B"
 
-import codecs
-import os, array, imghdr
+import array
 
 import struct
 # note:  struct pack, unpack, unpack_from all require bytestring format
 # data all the way up to at least python 2.7.5, python 3 okay with bytestring
 
-from mobi_index import getVariableWidthValue, readTagSection, countSetBits, getTagMap
+from mobi_index import getVariableWidthValue, readTagSection, getTagMap
 from mobi_utils import toHex
 
 DEBUG_DICT = False
 
 class InflectionData(object):
+
     def __init__(self, infldatas):
         self.infldatas = infldatas
         self.starts = []
@@ -46,7 +44,7 @@ class InflectionData(object):
             i += 1
             if i == len(self.counts):
                 print("Error: Problem with multiple inflections data sections")
-                return value, self.starts[0], self.counts[0], self.infldatas[0]
+                return lookupvalue, self.starts[0], self.counts[0], self.infldatas[0]
         return rvalue, self.starts[i], self.counts[i], self.infldatas[i]
 
     def offsets(self, value):
@@ -59,8 +57,8 @@ class InflectionData(object):
         return offset, nextOffset, data
 
 
-
 class dictSupport(object):
+
     def __init__(self, mh, sect):
         self.mh = mh
         self.header = mh.header
@@ -93,7 +91,7 @@ class dictSupport(object):
         if DEBUG_DICT:
             print("otype %d, oentries %d, op1 %d, op2 %d, otagx %d" % (otype, oentries, op1, op2, otagx))
 
-        if  header['code'] == 0xfdea or oentries > 0:
+        if header['code'] == 0xfdea or oentries > 0:
             # some dictionaries seem to be codepage 65002 (0xFDEA) which seems
             # to be some sort of strange EBCDIC utf-8 or 16 encoded strings
             # So we need to look for them and store them away to process leading text
@@ -115,8 +113,7 @@ class dictSupport(object):
             print("\n")
         return header, ordt1, ordt2
 
-    def getPositionMap (self):
-        header = self.header
+    def getPositionMap(self):
         sect = self.sect
 
         positionMap = {}
@@ -246,8 +243,6 @@ class dictSupport(object):
                 return True
         return False
 
-
-
     def getInflectionGroups(self, mainEntry, controlByteCount, tagTable, dinfl, inflectionNames, groupList):
         '''
         Create string which contains the inflection groups with inflection rules as mobipocket tags.
@@ -296,7 +291,6 @@ class dictSupport(object):
 
             result += b'</idx:infl>'
         return result
-
 
     def applyInflectionRule(self, mainEntry, inflectionRuleData, start, end):
         '''

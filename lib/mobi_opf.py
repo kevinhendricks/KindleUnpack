@@ -4,13 +4,9 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
+from compatibility_utils import unicode_str
+from compatibility_utils import lzip
 
-from compatibility_utils import PY2, PY3, text_type, utf8_str, unicode_str
-from compatibility_utils import bstr, bchr, hexlify
-from compatibility_utils import lrange, lzip, lmap, lfilter
-
-import codecs
 from unipath import pathof
 
 from xml.sax.saxutils import escape as xmlescape
@@ -19,22 +15,19 @@ try:
 except ImportError:
     from HTMLParser import HTMLParser
 
-import os, uuid
+import os
+import uuid
 from datetime import datetime
-
-import re
-# note: re requites the pattern to be the exact same type as the data to be searched in python3
-# but u"" is not allowed for the pattern itself only b""
 
 # In EPUB3, NCX and <guide> MAY exist in OPF, although the NCX is superseded
 # by the Navigation Document and the <guide> is deprecated. Currently, EPUB3_WITH_NCX
 # and EPUB3_WITH_GUIDE are set to True due to compatibility with epub2 reading systems.
 # They might be change to set to False in the future.
 
-EPUB3_WITH_NCX = True # Do not set to False except for debug.
+EPUB3_WITH_NCX = True  # Do not set to False except for debug.
 """ Set to True to create a toc.ncx when converting to epub3. """
 
-EPUB3_WITH_GUIDE = True # Do not set to False except for debug.
+EPUB3_WITH_GUIDE = True  # Do not set to False except for debug.
 """ Set to True to create a guide element in an opf when converting to epub3. """
 
 EPUB_OPF = 'content.opf'
@@ -64,6 +57,7 @@ EXTH_PUBLISHER_FURIGANA = 'Unknown_522'
 EXTRA_ENTITIES = {'"': '&quot;', "'": "&apos;"}
 
 class OPFProcessor(object):
+
     def __init__(self, files, metadata, fileinfo, imgnames, hasNCX, mh, usedmap, pagemapxml='', guidetext='', k8resc=None, epubver='2'):
         self.files = files
         self.metadata = metadata
@@ -110,7 +104,7 @@ class OPFProcessor(object):
         self.title_attrib = {}
         self.creator_attrib = {}
         self.publisher_attrib = {}
-        self.extra_attributes = [] # for force epub2 option
+        self.extra_attributes = []  # for force epub2 option
         # Create epub3 metadata from EXTH.
         self.exth_solved_refines_metadata = []
         self.exth_refines_metadata = []
@@ -123,7 +117,6 @@ class OPFProcessor(object):
             self.k8resc.createMetadata(epubver)
         if self.target_epubver == "3":
             self.createMetadataForFixedlayout()
-
 
     def escapeit(self, sval, EXTRAS=None):
         # note, xmlescape and unescape do not work with utf-8 bytestrings
@@ -140,7 +133,6 @@ class OPFProcessor(object):
             refines = ' refines="#%s"' % refid
         data.append('<meta property="%s"%s>%s</meta>\n' % (property, refines, content))
 
-
     def buildOPFMetadata(self, start_tag, has_obfuscated_fonts=False):
         # convert from EXTH metadata format to target epub version metadata
         # epub 3 will ignore <meta name="xxxx" content="yyyy" /> style metatags
@@ -156,9 +148,9 @@ class OPFProcessor(object):
         META_TAGS = ['Drm Server Id', 'Drm Commerce Id', 'Drm Ebookbase Book Id', 'ASIN', 'ThumbOffset', 'Fake Cover',
                                                 'Creator Software', 'Creator Major Version', 'Creator Minor Version', 'Creator Build Number',
                                                 'Watermark', 'Clipping Limit', 'Publisher Limit', 'Text to Speech Disabled', 'CDE Type',
-                                                'Updated Title', 'Font Signature (hex)', 'Tamper Proof Keys (hex)',  ]
+                                                'Updated Title', 'Font Signature (hex)', 'Tamper Proof Keys (hex)',]
 
-        #def handleTag(data, metadata, key, tag, ids={}):
+        # def handleTag(data, metadata, key, tag, ids={}):
         def handleTag(data, metadata, key, tag, attrib={}):
             '''Format metadata values.
 
@@ -183,7 +175,6 @@ class OPFProcessor(object):
                     res = '<meta name="%s" content="%s" />\n' % (name, self.escapeit(value, EXTRA_ENTITIES))
                     data.append(res)
                 del metadata[key]
-
 
         data = []
         data.append(start_tag + '\n')
@@ -260,7 +251,6 @@ class OPFProcessor(object):
             data += k8resc.extra_metadata
             data.append('-->\n')
 
-
         if 'CoverOffset' in metadata:
             imageNumber = int(metadata['CoverOffset'][0])
             self.covername = self.imgnames[imageNumber]
@@ -336,7 +326,6 @@ class OPFProcessor(object):
         data.append('</metadata>\n')
         return data
 
-
     def buildOPFManifest(self, ncxname, navname=None):
         # buildManifest for mobi7, azw4, epub2 and epub3.
         k8resc = self.k8resc
@@ -357,16 +346,16 @@ class OPFProcessor(object):
                 '.html' : 'text/html',                   # for mobi7
                 '.pdf'  : 'application/pdf',             # for azw4(print replica textbook)
                 '.ttf'  : 'application/x-font-ttf',
-                '.otf'  : 'application/x-font-opentype', # replaced?
+                '.otf'  : 'application/x-font-opentype',  # replaced?
                 '.css'  : 'text/css',
-                #'.html' : 'text/x-oeb1-document',        # for mobi7
-                #'.otf'  : 'application/vnd.ms-opentype', # [OpenType] OpenType fonts
-                #'.woff' : 'application/font-woff',       # [WOFF] WOFF fonts
-                #'.smil' : 'application/smil+xml',        # [MediaOverlays301] EPUB Media Overlay documents
-                #'.pls'  : 'application/pls+xml',         # [PLS] Text-to-Speech (TTS) Pronunciation lexicons
-                #'.mp3'  : 'audio/mpeg',
-                #'.mp4'  : 'video/mp4',
-                #'.js'   : 'text/javascript',             # not supported in K8
+                # '.html' : 'text/x-oeb1-document',        # for mobi7
+                # '.otf'  : 'application/vnd.ms-opentype', # [OpenType] OpenType fonts
+                # '.woff' : 'application/font-woff',       # [WOFF] WOFF fonts
+                # '.smil' : 'application/smil+xml',        # [MediaOverlays301] EPUB Media Overlay documents
+                # '.pls'  : 'application/pls+xml',         # [PLS] Text-to-Speech (TTS) Pronunciation lexicons
+                # '.mp3'  : 'audio/mpeg',
+                # '.mp4'  : 'video/mp4',
+                # '.js'   : 'text/javascript',             # not supported in K8
                 }
         spinerefs = []
 
@@ -405,7 +394,7 @@ class OPFProcessor(object):
                 else:
                     ref = "item%d" % idcnt
                 if ext == '.ttf' or ext == '.otf':
-                    if self.isK8: # fonts are only used in Mobi 8
+                    if self.isK8:  # fonts are only used in Mobi 8
                         fpath = 'Fonts/' + fname
                         data.append('<item id="{0:}" media-type="{1:}" href="{2:}" {3:}/>\n'.format(ref, media, fpath, properties))
                 else:
@@ -421,7 +410,6 @@ class OPFProcessor(object):
             data.append('<item id="map" media-type="application/oebs-page-map+xml" href="page-map.xml" />\n')
         data.append('</manifest>\n')
         return [data, spinerefs]
-
 
     def buildOPFSpine(self, spinerefs, isNCX):
         # build spine
@@ -475,7 +463,6 @@ class OPFProcessor(object):
         data.append('</spine>\n')
         return data
 
-
     def buildMobi7OPF(self):
         # Build an OPF for mobi7 and azw4.
         print("Building an opf for mobi7/azw4.")
@@ -500,7 +487,6 @@ class OPFProcessor(object):
             data.append(guide)
         data.append('</package>\n')
         return ''.join(data)
-
 
     def buildEPUBOPF(self, has_obfuscated_fonts=False):
         print("Building an opf for mobi8 using epub version: ", self.target_epubver)
@@ -538,7 +524,6 @@ class OPFProcessor(object):
         data.append('</package>\n')
         return ''.join(data)
 
-
     def writeOPF(self, has_obfuscated_fonts=False):
         if self.isK8:
             data = self.buildEPUBOPF(has_obfuscated_fonts)
@@ -552,7 +537,6 @@ class OPFProcessor(object):
             with open(pathof(outopf), 'wb') as f:
                 f.write(data.encode('utf-8'))
             return 0
-
 
     def getBookId(self):
         return self.BookId
@@ -587,7 +571,6 @@ class OPFProcessor(object):
             epubver = '3'
         return epubver
 
-
     def defineRefinesID(self):
         # the following EXTH are set by KDP.
         # 'Title_Furigana_(508)'
@@ -614,7 +597,6 @@ class OPFProcessor(object):
         if (needRefinesId or EXTH_PUBLISHER_FURIGANA in metadata) and 'Publisher' in metadata:
             for i in range(len(metadata.get('Publisher'))):
                 self.publisher_id[i] = 'publisher%02d' % (i+1)
-
 
     def processRefinesMetadata(self):
         # create refines metadata defined in epub3 or convert refines property to opf: attribues for epub2.
@@ -651,7 +633,6 @@ class OPFProcessor(object):
                         for i, value in enumerate(metadata[EXTH]):
                             attr = ' id="#%s" opf:file-as="%s"\n' % (id.get(i, defaultid), value)
                             self.extra_attributes.append(attr)
-
 
     def createMetadataForFixedlayout(self):
         # convert fixed layout to epub3 format if needed.

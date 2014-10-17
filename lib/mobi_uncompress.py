@@ -4,15 +4,10 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
-
 from compatibility_utils import PY2, bchr, lmap, bstr
 
 if PY2:
     range = xrange
-
-import codecs
-import os, array
 
 import struct
 # note:  struct pack, unpack, unpack_from all require bytestring format
@@ -23,10 +18,12 @@ class unpackException(Exception):
     pass
 
 class UncompressedReader:
+
     def unpack(self, data):
         return data
 
 class PalmdocReader:
+
     def unpack(self, i):
         o, p = b'', 0
         while p < len(i):
@@ -37,9 +34,9 @@ class PalmdocReader:
                 o += i[p:p+c]
                 p += c
             elif (c < 128):
-                o += bchr(c);
+                o += bchr(c)
             elif (c >= 192):
-                o += b' ' + bchr(c ^ 128);
+                o += b' ' + bchr(c ^ 128)
             else:
                 if p < len(i):
                     c = (c << 8) | ord(i[p:p+1])

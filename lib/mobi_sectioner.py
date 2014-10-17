@@ -4,11 +4,8 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
 from compatibility_utils import PY2, hexlify, bstr, bord, bchar
 
-import os
-import codecs
 import datetime
 
 if PY2:
@@ -46,10 +43,11 @@ def datetimefrompalmtime(palmtime):
 
 
 class Sectionizer:
+
     def __init__(self, filename):
         self.data = b''
         with open(pathof(filename), 'rb') as f:
-            self.data = f.read();
+            self.data = f.read()
         self.palmheader = self.data[:78]
         self.palmname = self.data[:32]
         self.ident = self.palmheader[0x3C:0x3C+8]
@@ -65,8 +63,10 @@ class Sectionizer:
     def dumpsectionsinfo(self):
         print("Section     Offset  Length      UID Attribs Description")
         for i in range(self.num_sections):
-            print("%3d %3X  0x%07X 0x%05X % 8d % 7d %s" % (i,i, self.sectionoffsets[i], self.sectionoffsets[i+1] - self.sectionoffsets[i], self.sectionattributes[i]&0xFFFFFF, (self.sectionattributes[i]>>24)&0xFF, self.sectiondescriptions[i]))
-        print("%3d %3X  0x%07X                          %s" % (self.num_sections,self.num_sections, self.sectionoffsets[self.num_sections], self.sectiondescriptions[self.num_sections]))
+            print("%3d %3X  0x%07X 0x%05X % 8d % 7d %s" % (i,i, self.sectionoffsets[i], self.sectionoffsets[
+                  i+1] - self.sectionoffsets[i], self.sectionattributes[i]&0xFFFFFF, (self.sectionattributes[i]>>24)&0xFF, self.sectiondescriptions[i]))
+        print("%3d %3X  0x%07X                          %s" %
+              (self.num_sections,self.num_sections, self.sectionoffsets[self.num_sections], self.sectiondescriptions[self.num_sections]))
 
     def setsectiondescription(self, section, description):
         if section < len(self.sectiondescriptions):
@@ -114,7 +114,6 @@ class Sectionizer:
             print("Should be zero but isn't: %d" % struct.unpack_from(b'>L', self.palmheader, 72)[0])
         print("Number of sections: %d" % struct.unpack_from(b'>H', self.palmheader, 76)[0])
         return
-
 
     def loadSection(self, section):
         before, after = self.sectionoffsets[section:section+2]

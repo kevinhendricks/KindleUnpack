@@ -4,14 +4,10 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
-
 from compatibility_utils import PY2, unicode_str
 
 if PY2:
     range = xrange
-
-import codecs
 
 import struct
 # note:  struct pack, unpack, unpack_from all require bytestring format
@@ -59,7 +55,7 @@ def _parseNames(numpages, data):
         pageMap += '(' + tup + ')'
         spos, nametype, svalue = tup.split(",")
         # print(spos, nametype, svalue)
-        if nametype == 'a' or  nametype == 'r':
+        if nametype == 'a' or nametype == 'r':
             svalue = int(svalue)
         spos = int(spos)
         for i in range(spos - 1, numpages):
@@ -82,8 +78,8 @@ def _parseNames(numpages, data):
     return pagenames, pageMap
 
 
-
 class PageMapProcessor:
+
     def __init__(self, mh, data):
         self.mh = mh
         self.data = data
@@ -115,7 +111,6 @@ class PageMapProcessor:
             self.pageoffsets.append(od)
         self.pagenames, self.pageMap = _parseNames(self.pm_nn, self.pmstr)
 
-
     def getPageMap(self):
         return self.pageMap
 
@@ -124,7 +119,6 @@ class PageMapProcessor:
 
     def getOffsets(self):
         return self.pageoffsets
-
 
     # page-map.xml will be unicode but encoded to utf-8 immediately before being written to a file
     def generateKF8PageMapXML(self, k8proc):
@@ -141,7 +135,6 @@ class PageMapProcessor:
                 pagemapxml += '<page name="%s" href="%s/%s" />\n' % (name, dir, linktgt)
         pagemapxml += "</page-map>\n"
         return pagemapxml
-
 
     def generateAPNX(self, apnx_meta):
         if apnx_meta['format'] == 'MOBI_8':

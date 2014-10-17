@@ -4,11 +4,8 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-import sys
-
-from compatibility_utils import unicode_str, utf8_str
+from compatibility_utils import unicode_str
 import os
-import codecs
 from unipath import pathof
 
 import re
@@ -27,6 +24,7 @@ DEFAULT_TITLE = 'Navigation'
 """ The default title for the navigation document. """
 
 class NAVProcessor(object):
+
     def __init__(self, files):
         self.files = files
         self.navname = NAVIGATION_FINENAME
@@ -44,9 +42,9 @@ class NAVProcessor(object):
         type_map = {
             'cover' : 'cover',
             'title-page' : 'title-page',
-            #?: 'frontmatter',
+            # ?: 'frontmatter',
             'text' : 'bodymatter',
-            #?: 'backmatter',
+            # ?: 'backmatter',
             'toc' : 'toc',
             'loi' : 'loi',
             'lot' : 'lot',
@@ -101,7 +99,7 @@ class NAVProcessor(object):
         header += '    <h1>Table of contents</h1>\n'
         footer = '  </nav>\n'
 
-        #recursive part
+        # recursive part
         def recursINDX(max_lvl=0, num=0, lvl=0, start=-1, end=-1):
             if start>len(indx_data) or end>len(indx_data):
                 print("Warning (in buildTOC): missing INDX child entries", start, end, len(indx_data))
@@ -134,14 +132,14 @@ class NAVProcessor(object):
                 xhtml += indent2 + '<li>'
                 entry = '<a href="{:}">{:s}</a>'.format(link, text)
                 xhtml += entry
-                #recurs
+                # recurs
                 if e['child1'] >= 0:
                     xhtml += '\n'
-                    xhtmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,\
+                    xhtmlrec, max_lvl, num = recursINDX(max_lvl, num, lvl + 1,
                             e['child1'], e['childn'] + 1)
                     xhtml += xhtmlrec
                     xhtml += indent2
-                #close entry
+                # close entry
                 xhtml += '</li>\n'
             xhtml += indent1 + '</ol>\n'
             return xhtml, max_lvl, num

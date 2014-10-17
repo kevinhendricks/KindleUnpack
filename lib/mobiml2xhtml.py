@@ -8,11 +8,12 @@
 Convert from Mobi ML to XHTML
 '''
 
-import os, sys
+import os
+import sys
 import re
 
 SPECIAL_HANDLING_TAGS = {
-    '?xml'     : ('xmlheader', -1), 
+    '?xml'     : ('xmlheader', -1),
     '!--'      : ('comment', -3),
     '!DOCTYPE' : ('doctype', -1),
 }
@@ -44,15 +45,14 @@ class MobiMLConverter(object):
         self.cssname = os.path.join(os.path.dirname(self.filename),'styles.css')
         self.current_font_size = 3
         self.font_history = []
- 
+
     def cleanup_html(self):
         self.wipml = re.sub(r'<div height="0(pt|px|ex|em|%){0,1}"></div>', '', self.wipml)
         self.wipml = self.wipml.replace('\r\n', '\n')
         self.wipml = self.wipml.replace('> <', '>\n<')
         self.wipml = self.wipml.replace('<mbp: ', '<mbp:')
-        #self.wipml = re.sub(r'<?xml[^>]*>', '', self.wipml)
+        # self.wipml = re.sub(r'<?xml[^>]*>', '', self.wipml)
         self.wipml = self.wipml.replace('<br></br>','<br/>')
-
 
     def replace_page_breaks(self):
         self.wipml = self.PAGE_BREAK_PAT.sub(
@@ -76,7 +76,6 @@ class MobiMLConverter(object):
             if te != -1:
                 te = te+2
         else :
-            tb = p
             te = self.wipml.find('>',p+1)
             ntb = self.wipml.find('<',p+1)
             if ntb != -1 and ntb < te:
@@ -85,8 +84,7 @@ class MobiMLConverter(object):
         self.pos = te + 1
         return None, self.wipml[p:te+1]
 
-
-    # parses string version of tag to identify its name, 
+    # parses string version of tag to identify its name,
     # its type 'begin', 'end' or 'single',
     # plus build a hashtable of its attributes
     # code is written to handle the possiblity of very poor formating
@@ -96,13 +94,16 @@ class MobiMLConverter(object):
         tname = None
         ttype = None
         tattr = {}
-        while s[p:p+1] == ' ' : p += 1
+        while s[p:p+1] == ' ' :
+            p += 1
         if s[p:p+1] == '/':
             ttype = 'end'
             p += 1
-            while s[p:p+1] == ' ' : p += 1
+            while s[p:p+1] == ' ' :
+                p += 1
         b = p
-        while s[p:p+1] not in ('>', '/', ' ', '"', "'", "\r", "\n") : p += 1
+        while s[p:p+1] not in ('>', '/', ' ', '"', "'", "\r", "\n") :
+            p += 1
         tname=s[b:p].lower()
         if tname == '!doctype':
             tname = '!DOCTYPE'
@@ -113,22 +114,27 @@ class MobiMLConverter(object):
         if ttype is None:
             # parse any attributes
             while s.find('=',p) != -1 :
-                while s[p:p+1] == ' ' : p += 1
+                while s[p:p+1] == ' ' :
+                    p += 1
                 b = p
-                while s[p:p+1] != '=' : p += 1
+                while s[p:p+1] != '=' :
+                    p += 1
                 aname = s[b:p].lower()
                 aname = aname.rstrip(' ')
                 p += 1
-                while s[p:p+1] == ' ' : p += 1
+                while s[p:p+1] == ' ' :
+                    p += 1
                 if s[p:p+1] in ('"', "'") :
                     p = p + 1
                     b = p
-                    while s[p:p+1] not in ('"', "'") : p += 1
+                    while s[p:p+1] not in ('"', "'") :
+                        p += 1
                     val = s[b:p]
                     p += 1
                 else :
                     b = p
-                    while s[p:p+1] not in ('>', '/', ' ') : p += 1
+                    while s[p:p+1] not in ('>', '/', ' ') :
+                        p += 1
                     val = s[b:p]
                 tattr[aname] = val
         # label beginning and single tags
@@ -139,7 +145,6 @@ class MobiMLConverter(object):
             elif s.find('/',p) >= 0:
                 ttype = 'single'
         return ttype, tname, tattr
- 
 
     # main routine to convert from mobi markup language to html
     def processml(self):
@@ -163,25 +168,25 @@ class MobiMLConverter(object):
                 break
 
             text, tag = r
-            
+
             if text:
                 if not skip:
                     htmlstr += text
 
             if tag:
                 ttype, tname, tattr = self.parsetag(tag)
-                
+
                 # If we run into a DTD or xml declarations inside the body ... bail.
                 if tname in SPECIAL_HANDLING_TAGS.keys() and tname != 'comment' and body_done:
                     htmlstr += '\n</body></html>'
                     break
-                
+
                 # make sure self-closing tags actually self-close
-                if ttype == 'begin' and tname in SELF_CLOSING_TAGS: 
+                if ttype == 'begin' and tname in SELF_CLOSING_TAGS:
                     ttype = 'single'
 
                 # make sure any end tags of self-closing tags are discarded
-                if ttype == 'end' and tname in SELF_CLOSING_TAGS: 
+                if ttype == 'end' and tname in SELF_CLOSING_TAGS:
                     continue
 
                 # remove embedded guide and refernces from old mobis
@@ -193,16 +198,15 @@ class MobiMLConverter(object):
                         tname = 'removeme:{0}'.format(tname)
                         tattr = None
 
-                # Get rid of font tags that only have a color attribute.        
+                # Get rid of font tags that only have a color attribute.
                 if tname == 'font' and ttype in ('begin', 'single', 'single_ext'):
                     if 'color' in tattr.keys() and len(tattr.keys()) == 1:
                         tname = 'removeme:{0}'.format(tname)
                         tattr = None
-                
-                # Get rid of empty spans in the markup.        
+
+                # Get rid of empty spans in the markup.
                 if tname == 'span' and ttype in ('begin', 'single', 'single_ext') and not len(tattr):
                     tname = 'removeme:{0}'.format(tname)
-                        
 
                 # need to handle fonts outside of the normal methods
                 # so fonts tags won't be added to the self.path since we keep track
@@ -220,7 +224,7 @@ class MobiMLConverter(object):
                     continue
 
                 # check for nested font tags and unnest them
-                if tname == 'font' and ttype == 'end': 
+                if tname == 'font' and ttype == 'end':
                     self.font_history.pop()
                     # handle this font end tag
                     taginfo = ('end', 'font', None)
@@ -244,7 +248,7 @@ class MobiMLConverter(object):
                             htmlstr += self.processtag(taginfo)
                             print "     - fixed by injecting empty start tag ", tname
                             self.path.append(tname)
-                        elif len(self.path) >  1  and tname == self.path[-2]:
+                        elif len(self.path) >  1 and tname == self.path[-2]:
                             # handle case of dangling missing end
                             taginfo = ('end', self.path[-1], None)
                             htmlstr += self.processtag(taginfo)
@@ -277,7 +281,6 @@ class MobiMLConverter(object):
                     htmlstr += '\n'
                     body_done = True
 
-
         # handle issue of possibly missing html, head, and body tags
         # I have not seen this but the original did something like this so ...
         if not body_done:
@@ -290,7 +293,7 @@ class MobiMLConverter(object):
             htmlstr = headstr + htmlstr
         if not html_done:
             htmlstr = '<html>\n' + htmlstr + '</html>\n'
-            
+
         # finally add DOCTYPE info
         htmlstr = '<?xml version="1.0"?>\n<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">\n' + htmlstr
 
@@ -300,12 +303,10 @@ class MobiMLConverter(object):
 
         return (htmlstr, css, self.cssname)
 
-
     def ensure_unit(self, raw, unit='px'):
         if re.search(r'\d+$', raw) is not None:
             raw += unit
         return raw
-
 
     # flatten possibly modified tag back to string
     def taginfo_tostring(self, taginfo):
@@ -332,7 +333,6 @@ class MobiMLConverter(object):
         else :
             res.append('>')
         return "".join(res)
-        
 
     # routines to convert from mobi ml tags atributes to xhtml attributes and styles
     def processtag(self, taginfo):
@@ -363,7 +363,7 @@ class MobiMLConverter(object):
             tattr = {}
 
         styles = []
-        
+
         if tname is None or tname.startswith('removeme'):
             return ''
 
@@ -375,12 +375,12 @@ class MobiMLConverter(object):
             for key in tattr.keys():
                 tattr.pop(key)
 
-        # handle general case of style, height, width, bgcolor in any tag 
+        # handle general case of style, height, width, bgcolor in any tag
         if 'style' in tattr.keys():
             style = tattr.pop('style').strip()
             if style:
                 styles.append(style)
-                
+
         if 'align' in tattr.keys():
             align = tattr.pop('align').strip()
             if align:
@@ -424,7 +424,7 @@ class MobiMLConverter(object):
                 if 'face' in tattr.keys():
                     face = tattr.pop('face').strip()
                     styles.append('font-family: "%s"' % face)
-                
+
                     # Monitor the constantly changing font sizes, change them to ems and move
                     # them to css. The following will work for 'flat' font tags, but nested font tags
                     # will cause things to go wonky. Need to revert to the parent font tag's size
@@ -439,8 +439,10 @@ class MobiMLConverter(object):
                     else:
                         if sz.startswith('-') or sz.startswith('+'):
                             sz = self.current_font_size + float(sz)
-                            if sz > 7: sz = 7
-                            elif sz < 1: sz = 1
+                            if sz > 7:
+                                sz = 7
+                            elif sz < 1:
+                                sz = 1
                             sz = str(int(sz))
                     styles.append('font-size: %s' % size_to_em_map[sz])
                     self.current_font_size = int(sz)
@@ -452,7 +454,7 @@ class MobiMLConverter(object):
                     if val.lower().endswith('em'):
                         try:
                             nval = float(val[:-2])
-                            nval *= 16 * (168.451/72) # Assume this was set using the Kindle profile
+                            nval *= 16 * (168.451/72)  # Assume this was set using the Kindle profile
                             tattr[attr] = "%dpx"%int(nval)
                         except:
                             del tattr[attr]
@@ -488,16 +490,17 @@ class MobiMLConverter(object):
             tattr['class'] = cls
 
         # convert updated tag back to string representation
-        if len(tattr) == 0: tattr = None
+        if len(tattr) == 0:
+            tattr = None
         taginfo = (ttype, tname, tattr)
         return self.taginfo_tostring(taginfo)
-    
+
 ''' main only left in for testing outside of plugin '''
 
 def main(argv=sys.argv):
     if len(argv) != 2:
         return 1
-    else:  
+    else:
         infile = argv[1]
 
     try:
@@ -509,7 +512,7 @@ def main(argv=sys.argv):
         file(outname, 'wb').write(htmlstr)
         file(cssname, 'wb').write(css)
         print 'Completed'
-        print 'XHTML version of book can be found at: ' + outname 
+        print 'XHTML version of book can be found at: ' + outname
 
     except ValueError, e:
         print "Error: %s" % e
@@ -519,6 +522,4 @@ def main(argv=sys.argv):
 
 
 if __name__ == "__main__":
-	sys.exit(main())
-
-
+    sys.exit(main())
