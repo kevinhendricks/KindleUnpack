@@ -58,11 +58,11 @@ EXTRA_ENTITIES = {'"': '&quot;', "'": "&apos;"}
 
 class OPFProcessor(object):
 
-    def __init__(self, files, metadata, fileinfo, imgnames, hasNCX, mh, usedmap, pagemapxml='', guidetext='', k8resc=None, epubver='2'):
+    def __init__(self, files, metadata, fileinfo, rscnames, hasNCX, mh, usedmap, pagemapxml='', guidetext='', k8resc=None, epubver='2'):
         self.files = files
         self.metadata = metadata
         self.fileinfo = fileinfo
-        self.imgnames = imgnames
+        self.rscnames = rscnames
         self.has_ncx = hasNCX
         self.codec = mh.codec
         self.isK8 = mh.isK8()
@@ -253,7 +253,7 @@ class OPFProcessor(object):
 
         if 'CoverOffset' in metadata:
             imageNumber = int(metadata['CoverOffset'][0])
-            self.covername = self.imgnames[imageNumber]
+            self.covername = self.rscnames[imageNumber]
             if self.covername is None:
                 print("Error: Cover image %s was not recognized as a valid image" % imageNumber)
             else:
@@ -305,7 +305,7 @@ class OPFProcessor(object):
         data.append(BEGIN_INFO_ONLY + '\n')
         if 'ThumbOffset' in metadata:
             imageNumber = int(metadata['ThumbOffset'][0])
-            imageName = self.imgnames[imageNumber]
+            imageName = self.rscnames[imageNumber]
             if imageName is None:
                 print("Error: Cover Thumbnail image %s was not recognized as a valid image" % imageNumber)
             else:
@@ -379,7 +379,7 @@ class OPFProcessor(object):
                 spinerefs.append(ref)
             idcnt += 1
 
-        for fname in self.imgnames:
+        for fname in self.rscnames:
             if fname is not None:
                 if self.used.get(fname,'not used') == 'not used':
                     continue

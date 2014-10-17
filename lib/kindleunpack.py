@@ -134,6 +134,7 @@ if PY2:
 #  0.74   added refines metadata, fixed language code in ncx and title in nav, added support for opf: from refines
 #  0.75   much improved dictioanry support including support for multiple inflection sections, minor mobi_opf fixes
 #  0.76   pre-release version only fix name related issues in opf by not using original file name in mobi7
+#  0.77   bug fix for unpacking HDImages with included Fonts
 #  0.80   converted to work with both python 2.7 and Python 3.3 and later
 
 DUMP = False
@@ -191,21 +192,21 @@ from mobi_pagemap import PageMapProcessor
 from mobi_dict import dictSupport
 
 
-def processSRCS(i, files, imgnames, sect, data):
+def processSRCS(i, files, rscnames, sect, data):
     # extract the source zip archive and save it.
     print("File contains kindlegen source archive, extracting as %s" % KINDLEGENSRC_FILENAME)
     srcname = os.path.join(files.outdir, KINDLEGENSRC_FILENAME)
     with open(pathof(srcname), 'wb') as f:
         f.write(data[16:])
-    imgnames.append(None)
+    rscnames.append(None)
     sect.setsectiondescription(i,"Zipped Source Files")
-    return imgnames
+    return rscnames
 
 
-def processPAGE(i, files, imgnames, sect, data, mh, pagemapproc):
+def processPAGE(i, files, rscnames, sect, data, mh, pagemapproc):
     # process any page map information and create an apnx file
     pagemapproc = PageMapProcessor(mh, data)
-    imgnames.append(None)
+    rscnames.append(None)
     sect.setsectiondescription(i,"PageMap")
     apnx_meta = {}
     acr = sect.palmname.decode('latin-1').rstrip('\x00')
@@ -225,18 +226,18 @@ def processPAGE(i, files, imgnames, sect, data, mh, pagemapproc):
         outname = os.path.join(files.outdir, 'mobi7-'+files.getInputFileBasename() + '.apnx')
     with open(pathof(outname), 'wb') as f:
         f.write(apnx_data)
-    return imgnames, pagemapproc
+    return rscnames, pagemapproc
 
 
-def processCMET(i, files, imgnames, sect, data):
+def processCMET(i, files, rscnames, sect, data):
     # extract the build log
     print("File contains kindlegen build log, extracting as %s" % KINDLEGENLOG_FILENAME)
     srcname = os.path.join(files.outdir, KINDLEGENLOG_FILENAME)
     with open(pathof(srcname), 'wb') as f:
         f.write(data[10:])
-    imgnames.append(None)
+    rscnames.append(None)
     sect.setsectiondescription(i,"Kindlegen log")
-    return imgnames
+    return rscnames
 
 
 # fonts only exist in KF8 ebooks
@@ -248,7 +249,7 @@ def processCMET(i, files, imgnames, sect, data):
 #          bytes 12 - 15:  offset to start of compressed font data
 #          bytes 16 - 19:  length of xor string stored before the start of the comnpress font data
 #          bytes 20 - 23:  start of xor string
-def processFONT(i, files, imgnames, sect, data, obfuscate_data):
+def processFONT(i, files, rscnames, sect, data, obfuscate_data, beg, rsc_ptr):
     fontname = "font%05d" % i
     ext = '.dat'
     font_error = False
@@ -288,12 +289,14 @@ def processFONT(i, files, imgnames, sect, data, obfuscate_data):
         outfnt = os.path.join(files.imgdir, fontname)
         with open(pathof(outfnt), 'wb') as f:
             f.write(font_data)
-        imgnames.append(fontname)
+        rscnames.append(fontname)
         sect.setsectiondescription(i,"Font {0:s}".format(fontname))
-    return imgnames, obfuscate_data
+        if rsc_ptr == -1:
+            rsc_ptr = i - beg
+    return rscnames, obfuscate_data, rsc_ptr
 
 
-def processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd):
+def processCRES(i, files, rscnames, sect, data, beg, rsc_ptr, use_hd):
     # extract an HDImage
     global DUMP
     data = data[12:]
@@ -301,7 +304,7 @@ def processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd):
 
     if imgtype is None:
         print("Warning: CRES Section %s does not contain a recognised resource" % i)
-        imgnames.append(None)
+        rscnames.append(None)
         sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s" % describe(data[0:4]))
         if DUMP:
             fname = "unknown%05d.dat" % i
@@ -309,12 +312,12 @@ def processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd):
             with open(pathof(outname), 'wb') as f:
                 f.write(data)
             sect.setsectiondescription(i,"Mysterious CRES data, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
-        image_ptr += 1
-        return imgnames, image_ptr
+        rsc_ptr += 1
+        return rscnames, rsc_ptr
 
     if use_hd:
         # overwrite corresponding lower res image with hd version
-        imgname = imgnames[image_ptr]
+        imgname = rscnames[rsc_ptr]
         imgdest = files.imgdir
     else:
         imgname = "HDimage%05d.%s" % (i, imgtype)
@@ -323,23 +326,23 @@ def processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd):
     outimg = os.path.join(imgdest, imgname)
     with open(pathof(outimg), 'wb') as f:
         f.write(data)
-    imgnames.append(None)
+    rscnames.append(None)
     sect.setsectiondescription(i,"Optional HD Image {0:s}".format(imgname))
-    image_ptr += 1
-    return imgnames, image_ptr
+    rsc_ptr += 1
+    return rscnames, rsc_ptr
 
 
-def processCONT(i, files, imgnames, sect, data):
+def processCONT(i, files, rscnames, sect, data):
     global DUMP
     # process a container header, most of this is unknown
     # right now only extract its EXTH
     dt = data[0:12]
     if dt == b"CONTBOUNDARY":
-        imgnames.append(None)
+        rscnames.append(None)
         sect.setsectiondescription(i,"CONTAINER BOUNDARY")
     else:
         sect.setsectiondescription(i,"CONT Header")
-        imgnames.append(None)
+        rscnames.append(None)
         if DUMP:
             cpage, = struct.unpack_from(b'>L', data, 12)
             contexth = data[48:]
@@ -349,10 +352,10 @@ def processCONT(i, files, imgnames, sect, data):
             outname= os.path.join(files.outdir, fname)
             with open(pathof(outname), 'wb') as f:
                 f.write(data)
-    return imgnames
+    return rscnames
 
 
-def processkind(i, files, imgnames, sect, data):
+def processkind(i, files, rscnames, sect, data):
     global DUMP
     dt = data[0:12]
     if dt == b"kindle:embed":
@@ -360,12 +363,12 @@ def processkind(i, files, imgnames, sect, data):
             print("\n\nHD Image Container Description String")
             print(data)
         sect.setsectiondescription(i,"HD Image Container Description String")
-        imgnames.append(None)
-    return imgnames
+        rscnames.append(None)
+    return rscnames
 
 
 # spine information from the original content.opf
-def processRESC(i, files, imgnames, sect, data, k8resc):
+def processRESC(i, files, rscnames, sect, data, k8resc):
     global DUMP
     if DUMP:
         rescname = "RESC%05d.dat" % i
@@ -379,18 +382,18 @@ def processRESC(i, files, imgnames, sect, data, k8resc):
     else:  # except:
         print("Warning: cannot extract information from RESC.")
         k8resc = None
-    imgnames.append(None)
+    rscnames.append(None)
     sect.setsectiondescription(i,"K8 RESC section")
-    return imgnames, k8resc
+    return rscnames, k8resc
 
 
-def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
+def processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset):
     global DUMP
     # Extract an Image
     imgtype = get_image_type(None, data)
     if imgtype is None:
         print("Warning: Section %s does not contain a recognised resource" % i)
-        imgnames.append(None)
+        rscnames.append(None)
         sect.setsectiondescription(i,"Mysterious Section, first four bytes %s" % describe(data[0:4]))
         if DUMP:
             fname = "unknown%05d.dat" % i
@@ -398,7 +401,7 @@ def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
             with open(pathof(outname), 'wb') as f:
                 f.write(data)
             sect.setsectiondescription(i,"Mysterious Section, first four bytes %s extracting as %s" % (describe(data[0:4]), fname))
-        return imgnames, image_ptr
+        return rscnames, rsc_ptr
 
     imgname = "image%05d.%s" % (i, imgtype)
     if cover_offset is not None and i == beg + cover_offset:
@@ -407,14 +410,14 @@ def processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset):
     outimg = os.path.join(files.imgdir, imgname)
     with open(pathof(outimg), 'wb') as f:
         f.write(data)
-    imgnames.append(imgname)
+    rscnames.append(imgname)
     sect.setsectiondescription(i,"Image {0:s}".format(imgname))
-    if image_ptr == -1:
-        image_ptr = i - beg
-    return imgnames, image_ptr
+    if rsc_ptr == -1:
+        rsc_ptr = i - beg
+    return rscnames, rsc_ptr
 
 
-def processPrintReplica(metadata, files, imgnames, mh):
+def processPrintReplica(metadata, files, rscnames, mh):
     global DUMP
     global WRITE_RAW_DATA
     rawML = mh.getRawML()
@@ -446,14 +449,14 @@ def processPrintReplica(metadata, files, imgnames, mh):
 
     fileinfo.append([None,'', files.getInputFileBasename() + '.pdf'])
     usedmap = {}
-    for name in imgnames:
+    for name in rscnames:
         if name is not None:
             usedmap[name] = 'used'
-    opf = OPFProcessor(files, metadata, fileinfo, imgnames, False, mh, usedmap)
+    opf = OPFProcessor(files, metadata, fileinfo, rscnames, False, mh, usedmap)
     opf.writeOPF()
 
 
-def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfuscate_data, apnxfile=None, epubver='2'):
+def processMobi8(mh, metadata, sect, files, rscnames, pagemapproc, k8resc, obfuscate_data, apnxfile=None, epubver='2'):
     global DUMP
     global WRITE_RAW_DATA
 
@@ -526,7 +529,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
 
     # convert the rawML to a set of xhtml files
     print("Building an epub-like structure")
-    htmlproc = XHTMLK8Processor(imgnames, k8proc)
+    htmlproc = XHTMLK8Processor(rscnames, k8proc)
     usedmap = htmlproc.buildXHTML()
 
     # write out the xhtml svg, and css files
@@ -534,7 +537,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
     fileinfo = []
     # first create a cover page if none exists
     if CREATE_COVER_PAGE:
-        cover = CoverProcessor(files, metadata, imgnames)
+        cover = CoverProcessor(files, metadata, rscnames)
         cover_img = utf8_str(cover.getImageName())
         need_to_create_cover_page = False
         if cover_img is not None:
@@ -574,7 +577,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
                 f.write(flowpart)
 
     # create the opf
-    opf = OPFProcessor(files, metadata.copy(), fileinfo, imgnames, True, mh, usedmap,
+    opf = OPFProcessor(files, metadata.copy(), fileinfo, rscnames, True, mh, usedmap,
                        pagemapxml=pagemapxml, guidetext=guidetext, k8resc=k8resc, epubver=epubver)
     uuid = opf.writeOPF(bool(obfuscate_data))
 
@@ -591,7 +594,7 @@ def processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfus
     files.makeEPUB(usedmap, obfuscate_data, uuid)
 
 
-def processMobi7(mh, metadata, sect, files, imgnames):
+def processMobi7(mh, metadata, sect, files, rscnames):
     global DUMP
     global WRITE_RAW_DATA
     # An original Mobi
@@ -618,7 +621,7 @@ def processMobi7(mh, metadata, sect, files, imgnames):
         positionMap = dictSupport(mh, sect).getPositionMap()
 
     # convert the rawml back to Mobi ml
-    proc = HTMLProcessor(files, metadata, imgnames)
+    proc = HTMLProcessor(files, metadata, rscnames)
     srctext = proc.findAnchors(rawML, ncx_data, positionMap)
     srctext, usedmap = proc.insertHREFS()
 
@@ -674,7 +677,7 @@ def processMobi7(mh, metadata, sect, files, imgnames):
         guidetext = guidetext.decode(mh.codec)
 
     # create an OPF
-    opf = OPFProcessor(files, metadata, fileinfo, imgnames, ncx.isNCX, mh, usedmap, guidetext=guidetext)
+    opf = OPFProcessor(files, metadata, fileinfo, rscnames, ncx.isNCX, mh, usedmap, guidetext=guidetext)
     opf.writeOPF()
 
 
@@ -724,8 +727,8 @@ def processUnknownSections(mh, sect, files, K8Boundary):
 def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=False, epubver='2', use_hd=False):
     global DUMP
     global WRITE_RAW_DATA
-    imgnames = []
-    image_ptr = -1
+    rscnames = []
+    rsc_ptr = -1
     k8resc = None
     obfuscate_data = []
     for mh in mhlst:
@@ -789,50 +792,50 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                         f.write(data)
                     print("Dumping section {0:d} type {1:s} to file {2:s} ".format(i,unicode_str(type),outname))
                 sect.setsectiondescription(i,"Type {0:s}".format(unicode_str(type)))
-                imgnames.append(None)
+                rscnames.append(None)
             elif type == b"SRCS":
-                imgnames = processSRCS(i, files, imgnames, sect, data)
+                rscnames = processSRCS(i, files, rscnames, sect, data)
             elif type == b"PAGE":
-                imgnames, pagemapproc = processPAGE(i, files, imgnames, sect, data, mh, pagemapproc)
+                rscnames, pagemapproc = processPAGE(i, files, rscnames, sect, data, mh, pagemapproc)
             elif type == b"CMET":
-                imgnames = processCMET(i, files, imgnames, sect, data)
+                rscnames = processCMET(i, files, rscnames, sect, data)
             elif type == b"FONT":
-                imgnames, obfuscate_data = processFONT(i, files, imgnames, sect, data, obfuscate_data)
+                rscnames, obfuscate_data, rsc_ptr = processFONT(i, files, rscnames, sect, data, obfuscate_data, beg, rsc_ptr)
             elif type == b"CRES":
-                imgnames, image_ptr = processCRES(i, files, imgnames, sect, data, beg, image_ptr, use_hd)
+                rscnames, rsc_ptr = processCRES(i, files, rscnames, sect, data, beg, rsc_ptr, use_hd)
             elif type == b"CONT":
-                imgnames = processCONT(i, files, imgnames, sect, data)
+                rscnames = processCONT(i, files, rscnames, sect, data)
             elif type == b"kind":
-                imgnames = processkind(i, files, imgnames, sect, data)
+                rscnames = processkind(i, files, rscnames, sect, data)
             elif type == b'\xa0\xa0\xa0\xa0':
                 sect.setsectiondescription(i,"Empty_HD_Image/Resource_Placeholder")
-                imgnames.append(None)
-                image_ptr += 1
+                rscnames.append(None)
+                rsc_ptr += 1
             elif type == b"RESC":
-                imgnames, k8resc = processRESC(i, files, imgnames, sect, data, k8resc)
+                rscnames, k8resc = processRESC(i, files, rscnames, sect, data, k8resc)
             elif data == EOF_RECORD:
                 sect.setsectiondescription(i,"End Of File")
-                imgnames.append(None)
+                rscnames.append(None)
             elif data[0:8] == b"BOUNDARY":
                 sect.setsectiondescription(i,"BOUNDARY Marker")
-                imgnames.append(None)
+                rscnames.append(None)
             else:
                 # if reached here should be an image ow treat as unknown
-                imgnames, image_ptr  = processImage(i, files, imgnames, sect, data, beg, image_ptr, cover_offset)
+                rscnames, rsc_ptr  = processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset)
         # done unpacking resources
 
         # Print Replica
         if mh.isPrintReplica() and not k8only:
-            processPrintReplica(metadata, files, imgnames, mh)
+            processPrintReplica(metadata, files, rscnames, mh)
             continue
 
         # KF8 (Mobi 8)
         if mh.isK8():
-            processMobi8(mh, metadata, sect, files, imgnames, pagemapproc, k8resc, obfuscate_data, apnxfile, epubver)
+            processMobi8(mh, metadata, sect, files, rscnames, pagemapproc, k8resc, obfuscate_data, apnxfile, epubver)
 
         # Old Mobi (Mobi 7)
         elif not k8only:
-            processMobi7(mh, metadata, sect, files, imgnames)
+            processMobi7(mh, metadata, sect, files, rscnames)
 
         # process any remaining unknown sections of the palm file
         processUnknownSections(mh, sect, files, K8Boundary)

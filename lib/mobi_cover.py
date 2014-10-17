@@ -122,10 +122,10 @@ class CoverProcessor(object):
     """Create a cover page.
 
     """
-    def __init__(self, files, metadata, imgnames, imgname=None, imgdata=None):
+    def __init__(self, files, metadata, rscnames, imgname=None, imgdata=None):
         self.files = files
         self.metadata = metadata
-        self.imgnames = imgnames
+        self.rscnames = rscnames
         self.cover_page = COVER_PAGE_FINENAME
         self.use_svg = USE_SVG_WRAPPER  # Use svg wrapper.
         self.lang = metadata.get('Language', ['en'])[0]
@@ -142,7 +142,7 @@ class CoverProcessor(object):
             self.cover_image = imgname
         elif 'CoverOffset' in metadata:
             imageNumber = int(metadata['CoverOffset'][0])
-            cover_image = self.imgnames[imageNumber]
+            cover_image = self.rscnames[imageNumber]
             if cover_image is not None:
                 self.cover_image = cover_image
             else:
