@@ -29,15 +29,24 @@ from __future__ import unicode_literals, division, absolute_import, print_functi
 
 import sys
 import codecs
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
+
+iswindows = sys.platform.startswith('win')
+
 try:
     from urllib.parse import unquote
 except ImportError:
     from urllib import unquote
 
-iswindows = sys.platform.startswith('win')
+try:
+    import html
+except ImportError:
+    from HTMLParser import HTMLParser
 
-PY2 = sys.version_info[0] == 2
-PY3 = sys.version_info[0] == 3
+if PY2:
+    _h = HTMLParser()
 
 if PY3:
     text_type = str
@@ -54,7 +63,6 @@ else:
     # against sys.stdout.encoding being None stupidly forcing forcing ascii encoding of unicode
     # sys.stdout = codecs.getwriter("utf-8")(sys.stdout)
     # alternatively set environment variable as follows **before** launching python:  export PYTHONIOENCODING=UTF-8
-
 
 # NOTE: Python 3 is completely broken when accessing single bytes in bytes strings
 # (and they amazingly claim by design and no bug!)
@@ -92,7 +100,6 @@ else:
 # If instead you want it as a single character byte use the bchar() function
 # both of which are defined below.
 
-
 if PY3:
     # Also Note: if decode a bytestring using 'latin-1' (or any other full range 0-255 encoding)
     # in place of ascii you will get a byte value to half-word or integer value
@@ -113,7 +120,6 @@ if PY3:
     def bchar(s):
         return bytes([s])
 
-
 else:
     def bchr(s):
         return chr(s)
@@ -126,7 +132,6 @@ else:
 
     def bchar(s):
         return s
-
 
 if PY3:
     # list-producing versions of the major Python iterating functions
@@ -149,13 +154,11 @@ else:
     lmap = __builtin__.map
     lfilter = __builtin__.filter
 
-
 # In Python 3 you can no longer use .encode('hex') on a bytestring
 # instead use the following on both platforms
 import binascii
 def hexlify(bdata):
     return (binascii.hexlify(bdata)).decode('ascii')
-
 
 # If you: import struct
 # Note:  struct pack, unpack, unpack_from all *require* bytestring format
@@ -209,6 +212,11 @@ def unquoteurl(href):
     href = unquote(href)
     return href
 
+# unescape html
+def unescapeit(sval):
+    if PY2:
+        return _h.unescape(sval)
+    return html.unescape(sval)
 
 # Python 2.X commandline parsing under Windows has been horribly broken for years!
 # Use the following code to emulate full unicode commandline parsing on Python 2

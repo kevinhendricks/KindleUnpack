@@ -4,16 +4,12 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import unicode_str
+from compatibility_utils import unicode_str, unescapeit
 from compatibility_utils import lzip
 
 from unipath import pathof
 
 from xml.sax.saxutils import escape as xmlescape
-try:
-    from html.parser import HTMLParser
-except ImportError:
-    from HTMLParser import HTMLParser
 
 import os
 import uuid
@@ -122,9 +118,9 @@ class OPFProcessor(object):
         # note, xmlescape and unescape do not work with utf-8 bytestrings
         sval = unicode_str(sval)
         if EXTRAS:
-            res = xmlescape(self.h.unescape(sval), EXTRAS)
+            res = xmlescape(unescapeit(sval), EXTRAS)
         else:
-            res = xmlescape(self.h.unescape(sval))
+            res = xmlescape(unescapeit(sval))
         return res
 
     def createMetaTag(self, data, property, content, refid=''):
