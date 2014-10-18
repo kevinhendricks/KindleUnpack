@@ -2,9 +2,24 @@
 # -*- coding: utf-8 -*-
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
+from __future__ import unicode_literals, division, absolute_import, print_function
+
+from compatibility_utils import PY2, PY3, utf8_str, unicode_str
+import unipath
+from unipath import pathof
+
 import os
-import codecs
-from ConfigParser import RawConfigParser
+
+try:
+    from configparser import RawConfigParser
+except ImportError:
+    from ConfigParser import RawConfigParser
+
+def native_str(apath, encoding='utf-8'):
+    apath = unicode_str(apath, encoding)
+    if PY3:
+        return apath
+    return apath.encode(encoding)
 
 def getprefs(configfile, tkobj, PERSIST):
     # To keep things simple for possible future preference additions/deletions:
@@ -13,9 +28,9 @@ def getprefs(configfile, tkobj, PERSIST):
     prefs = {}
 
     # Sane defaults
-    prefs['mobipath'] = os.getcwdu()
-    prefs['outpath'] = os.getcwdu()
-    prefs['apnxpath'] = os.getcwdu()
+    prefs['mobipath'] = unipath.getcwd()
+    prefs['outpath'] = unipath.getcwd()
+    prefs['apnxpath'] = unipath.getcwd()
     prefs['splitvar'] = 0
     prefs['rawvar'] = 0
     prefs['dbgvar'] = 0
@@ -25,27 +40,30 @@ def getprefs(configfile, tkobj, PERSIST):
     w = tkobj.winfo_screenwidth()
     h = tkobj.winfo_screenheight()
     rootsize = (605, 575)
-    x = w/2 - rootsize[0]/2
-    y = h/2 - rootsize[1]/2
-    prefs['windowgeometry'] = (u'%dx%d+%d+%d' % (rootsize + (x, y)))
+    x = w//2 - rootsize[0]//2
+    y = h//2 - rootsize[1]//2
+    prefs['windowgeometry'] = ('%dx%d+%d+%d' % (rootsize + (x, y)))
 
-    if os.path.exists(configfile) and PERSIST:
+    if unipath.exists(configfile) and PERSIST:
         config = RawConfigParser()
         try:
-            with codecs.open(configfile, 'r', 'utf-8') as f:
-                config.readfp(f)
+            if PY3:
+                config.read(configfile)
+            else:
+                with open(configfile, 'rb') as f:
+                    config.readfp(f)
         except:
             return prefs
+
         # Python 2.x's ConfigParser module will not save unicode strings to an ini file (at least on Windows)
         # no matter how hard you try to smack it around and scare it into doing so.
-        # The workaround (to support unicode path prefences) is to encode the file path using the
-        # unicode_escape 'codec' when writing, and to decode using the unicode_escape codec when reading.
+        # The workaround is to encode the file path using the utf-8 encoding
         if config.has_option('Defaults', 'mobipath'):
-            prefs['mobipath'] = config.get('Defaults', 'mobipath').decode('unicode_escape')
+            prefs['mobipath'] = unicode_str(config.get('Defaults', 'mobipath'),'utf-8')
         if config.has_option('Defaults', 'outpath'):
-            prefs['outpath'] = config.get('Defaults', 'outpath').decode('unicode_escape')
+            prefs['outpath'] = unicode_str(config.get('Defaults', 'outpath'), 'utf-8')
         if config.has_option('Defaults', 'apnxpath'):
-            prefs['apnxpath'] = config.get('Defaults', 'apnxpath').decode('unicode_escape')
+            prefs['apnxpath'] = unicode_str(config.get('Defaults', 'apnxpath'), 'utf-8')
         if config.has_option('Defaults', 'splitvar'):
             prefs['splitvar'] = config.getint('Defaults', 'splitvar')
         if config.has_option('Defaults', 'rawvar'):
@@ -66,27 +84,28 @@ def saveprefs(configfile, prefs, tkobj):
     # tkobj name = prefs dictionary key = ini.get|set name
     config = RawConfigParser()
     config.add_section('Defaults')
-    if len(tkobj.mobipath.get()):
-        if os.path.isfile(tkobj.mobipath.get()):
-            config.set('Defaults', 'mobipath', os.path.dirname(tkobj.mobipath.get()).encode('unicode_escape'))
-        else:
-            config.set('Defaults', 'mobipath', prefs['mobipath'].encode('unicode_escape'))
+
+    # mobipath
+    apath = pathof(tkobj.mobipath.get())
+    if apath is not None and unipath.isfile(apath):
+            config.set('Defaults', 'mobipath', native_str(os.path.dirname(apath)))
     else:
-        config.set('Defaults', 'mobipath', prefs['mobipath'].encode('unicode_escape'))
-    if len(tkobj.outpath.get()):
-        if os.path.isdir(tkobj.outpath.get()):
-            config.set('Defaults', 'outpath', tkobj.outpath.get().encode('unicode_escape'))
-        else:
-            config.set('Defaults', 'outpath', prefs['outpath'].encode('unicode_escape'))
+        config.set('Defaults', 'mobipath', native_str(prefs['mobipath']))
+
+    # outpath
+    apath = pathof(tkobj.outpath.get())
+    if apath is not None and unipath.isdir(apath):
+            config.set('Defaults', 'outpath', native_str(apath))
     else:
-        config.set('Defaults', 'outpath', prefs['outpath'].encode('unicode_escape'))
-    if len(tkobj.apnxpath.get()):
-        if os.path.isfile(tkobj.apnxpath.get()):
-            config.set('Defaults', 'apnxpath', os.path.dirname(tkobj.apnxpath.get()).encode('unicode_escape'))
-        else:
-            config.set('Defaults', 'apnxpath', prefs['apnxpath'].encode('unicode_escape'))
+        config.set('Defaults', 'outpath', native_str(prefs['outpath']))
+
+    # apnxpath
+    apath = pathof(tkobj.apnxpath.get())
+    if apath is not None and unipath.isfile(apath):
+            config.set('Defaults', 'apnxpath', native_str(os.path.dirname(apath)))
     else:
-        config.set('Defaults', 'apnxpath', prefs['apnxpath'].encode('unicode_escape'))
+        config.set('Defaults', 'apnxpath', native_str(prefs['apnxpath']))
+
     config.set('Defaults', 'splitvar', tkobj.splitvar.get())
     config.set('Defaults', 'rawvar', tkobj.rawvar.get())
     config.set('Defaults', 'dbgvar', tkobj.dbgvar.get())
@@ -95,8 +114,12 @@ def saveprefs(configfile, prefs, tkobj):
     config.add_section('Geometry')
     config.set('Geometry', 'windowgeometry', tkobj.root.geometry())
     try:
-        with codecs.open(configfile, 'w', 'utf-8') as f:
-            config.write(f)
+        if PY3:
+            with open(configfile, 'w') as f:
+                config.write(f)
+        else:
+            with open(configfile, 'wb') as f:
+                config.write(f)
         return 1
     except:
         pass

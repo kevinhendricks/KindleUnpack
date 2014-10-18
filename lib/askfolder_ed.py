@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
+from __future__ import unicode_literals, division, absolute_import, print_function
+
 # to work around tk_chooseDirectory not properly returning unicode paths on Windows
 # need to use a dialog that can be hacked up to actually return full unicode paths
 # originally based on AskFolder from EasyDialogs for Windows but modified to fix it
@@ -33,11 +35,9 @@
 AskFolder(...) -- Ask the user to select a folder Windows specific
 """
 
-
 import ctypes
 from ctypes.wintypes import LPCWSTR
 import ctypes.wintypes as wintypes
-
 
 __all__ = ['AskFolder']
 
@@ -45,7 +45,6 @@ __all__ = ['AskFolder']
 ole32 = ctypes.windll.ole32
 shell32 = ctypes.windll.shell32
 user32 = ctypes.windll.user32
-
 
 # Windows Constants
 BFFM_INITIALIZED = 1
