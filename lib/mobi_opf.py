@@ -71,7 +71,6 @@ class OPFProcessor(object):
         if self.k8resc is not None and self.k8resc.cover_name is not None:
             # update cover id info from RESC if available
             self.cover_id = self.k8resc.cover_name
-        self.h = HTMLParser()
         # Create a unique urn uuid
         self.BookId = unicode_str(str(uuid.uuid4()))
         self.pagemap = pagemapxml
