@@ -12,7 +12,7 @@ add_cp65001_codec()
 import lib.path as path
 
 if sys.platform.startswith("win"):
-    from askfolder_ed import AskFolder
+    from libgui.askfolder_ed import AskFolder
 
 from Queue import Full
 from Queue import Empty
@@ -28,7 +28,7 @@ import lib.kindleunpack as kindleunpack
 PERSISTENT_PREFS = True
 
 from inspect import getfile, currentframe
-from prefs import getprefs, saveprefs
+from libgui.prefs import getprefs, saveprefs
 
 # Probably overkill, but to ensure cross-platform success no matter how the script is called/run...
 SCRIPT_NAME = utf8_str(getfile(currentframe()))
@@ -68,7 +68,7 @@ import tkMessageBox
 import tkFont
 import ttk
 
-from scrolltextwidget import ScrolledText
+from libgui.scrolltextwidget import ScrolledText
 
 class MainDialog(Tkinter.Frame):
     def __init__(self, root):
