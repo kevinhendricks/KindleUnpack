@@ -8,13 +8,13 @@ import sys
 import codecs
 import traceback
 
-from compatibility_utils import PY2, binary_type, utf8_str, unicode_str
-from compatibility_utils import unicode_argv, add_cp65001_codec
-from compatibility_utils import hexlify
+from .compatibility_utils import PY2, binary_type, utf8_str, unicode_str
+from .compatibility_utils import unicode_argv, add_cp65001_codec
+from .compatibility_utils import hexlify
 
 add_cp65001_codec()
 
-from unipath import pathof
+from .unipath import pathof
 
 if PY2:
     range = xrange
@@ -176,20 +176,20 @@ class unpackException(Exception):
 
 
 # import the kindleunpack support libraries
-from unpack_structure import fileNames
-from mobi_sectioner import Sectionizer, describe
-from mobi_header import MobiHeader, dump_contexth
-from mobi_utils import toBase32
-from mobi_opf import OPFProcessor
-from mobi_html import HTMLProcessor, XHTMLK8Processor
-from mobi_ncx import ncxExtract
-from mobi_k8proc import K8Processor
-from mobi_split import mobi_split
-from mobi_k8resc import K8RESCProcessor
-from mobi_nav import NAVProcessor
-from mobi_cover import CoverProcessor, get_image_type
-from mobi_pagemap import PageMapProcessor
-from mobi_dict import dictSupport
+from .unpack_structure import fileNames
+from .mobi_sectioner import Sectionizer, describe
+from .mobi_header import MobiHeader, dump_contexth
+from .mobi_utils import toBase32
+from .mobi_opf import OPFProcessor
+from .mobi_html import HTMLProcessor, XHTMLK8Processor
+from .mobi_ncx import ncxExtract
+from .mobi_k8proc import K8Processor
+from .mobi_split import mobi_split
+from .mobi_k8resc import K8RESCProcessor
+from .mobi_nav import NAVProcessor
+from .mobi_cover import CoverProcessor, get_image_type
+from .mobi_pagemap import PageMapProcessor
+from .mobi_dict import dictSupport
 
 
 def processSRCS(i, files, rscnames, sect, data):

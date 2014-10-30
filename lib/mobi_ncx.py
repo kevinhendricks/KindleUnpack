@@ -5,15 +5,15 @@
 from __future__ import unicode_literals, division, absolute_import, print_function
 
 import os
-from unipath import pathof
+from .unipath import pathof
 
 
 import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
 
-from mobi_utils import toBase32
-from mobi_index import MobiIndex
+from .mobi_utils import toBase32
+from .mobi_index import MobiIndex
 
 DEBUG_NCX = False
 

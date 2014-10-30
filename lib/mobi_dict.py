@@ -4,7 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, PY3, utf8_str, bstr, bchr
+from .compatibility_utils import PY2, PY3, utf8_str, bstr, bchr
 
 if PY2:
     range = xrange
@@ -19,8 +19,8 @@ import struct
 # note:  struct pack, unpack, unpack_from all require bytestring format
 # data all the way up to at least python 2.7.5, python 3 okay with bytestring
 
-from mobi_index import getVariableWidthValue, readTagSection, getTagMap
-from mobi_utils import toHex
+from .mobi_index import getVariableWidthValue, readTagSection, getTagMap
+from .mobi_utils import toHex
 
 DEBUG_DICT = False
 

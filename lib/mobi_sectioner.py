@@ -4,7 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, hexlify, bstr, bord, bchar
+from .compatibility_utils import PY2, hexlify, bstr, bord, bchar
 
 import datetime
 
@@ -15,7 +15,7 @@ if PY2:
 # data all the way up to at least python 2.7.5, python 3 okay with bytestring
 import struct
 
-from unipath import pathof
+from .unipath import pathof
 
 DUMP = False
 """ Set to True to dump all possible information. """

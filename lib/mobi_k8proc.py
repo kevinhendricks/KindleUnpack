@@ -4,7 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, bstr, utf8_str
+from .compatibility_utils import PY2, bstr, utf8_str
 
 if PY2:
     range = xrange
@@ -19,9 +19,9 @@ import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
 
-from mobi_index import MobiIndex
-from mobi_utils import fromBase32
-from unipath import pathof
+from .mobi_index import MobiIndex
+from .mobi_utils import fromBase32
+from .unipath import pathof
 
 _guide_types = [b'cover',b'title-page',b'toc',b'index',b'glossary',b'acknowledgements',
                 b'bibliography',b'colophon',b'copyright-page',b'dedication',

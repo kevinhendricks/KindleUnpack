@@ -5,13 +5,12 @@
 from __future__ import unicode_literals, division, absolute_import, print_function
 
 import sys
-sys.path.append('lib')
 
-from compatibility_utils import PY2, text_type, unicode_str
-from compatibility_utils import unicode_argv, add_cp65001_codec
+from lib.compatibility_utils import PY2, text_type, unicode_str
+from lib.compatibility_utils import unicode_argv, add_cp65001_codec
 
-import unipath
-from unipath import pathof
+import lib.unipath as unipath
+from lib.unipath import pathof
 
 import os
 import traceback
@@ -27,7 +26,7 @@ except ImportError:
     from Queue import Empty
 
 if PY2 and sys.platform.startswith("win"):
-    from askfolder_ed import AskFolder
+    from libgui.askfolder_ed import AskFolder
 
 from multiprocessing import Process, Queue
 
@@ -42,9 +41,9 @@ else:
     import tkinter.filedialog as tkinter_filedialog
     import tkinter.ttk as tkinter_ttk
 
-from scrolltextwidget import ScrolledText
+from libgui.scrolltextwidget import ScrolledText
 
-import kindleunpack
+import lib.kindleunpack as kindleunpack
 
 # Set to false to NOT save prefences to an ini file.
 # Starting directories for file dialogs will still persist
@@ -54,7 +53,7 @@ import kindleunpack
 PERSISTENT_PREFS = True
 
 from inspect import getfile, currentframe
-from prefs import getprefs, saveprefs
+from libgui.prefs import getprefs, saveprefs
 
 # Probably overkill, but to ensure cross-platform success no matter how the script is called/run...
 SCRIPT_NAME = unicode_str(getfile(currentframe()))

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import unicode_literals, division, absolute_import, print_function
-from compatibility_utils import PY2
+from lib.compatibility_utils import PY2
 
 if PY2:
     import Tkinter as tkinter
