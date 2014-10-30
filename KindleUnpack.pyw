@@ -5,13 +5,12 @@
 from __future__ import unicode_literals, division, absolute_import, print_function
 
 import sys
-sys.path.append('lib')
 
-from compatibility_utils import PY2, text_type, unicode_str
-from compatibility_utils import unicode_argv, add_cp65001_codec
+from lib.compatibility_utils import PY2, text_type, unicode_str
+from lib.compatibility_utils import unicode_argv, add_cp65001_codec
 
-import unipath
-from unipath import pathof
+import lib.unipath as unipath
+from lib.unipath import pathof
 
 import os
 import traceback
@@ -44,7 +43,7 @@ else:
 
 from scrolltextwidget import ScrolledText
 
-import kindleunpack
+import lib.kindleunpack as kindleunpack
 
 # Set to false to NOT save prefences to an ini file.
 # Starting directories for file dialogs will still persist
