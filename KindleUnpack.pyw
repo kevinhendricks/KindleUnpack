@@ -3,23 +3,22 @@
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
 import sys
-sys.path.append('lib')
 import os, os.path, urllib
 import codecs
 
-from utf8_utils import add_cp65001_codec, utf8_argv, utf8_str
+from lib.utf8_utils import add_cp65001_codec, utf8_argv, utf8_str
 add_cp65001_codec()
 
-import path
+import lib.path as path
 
 if sys.platform.startswith("win"):
-    from askfolder_ed import AskFolder
+    from libgui.askfolder_ed import AskFolder
 
 from Queue import Full
 from Queue import Empty
 from multiprocessing import Process, Queue
 
-import kindleunpack
+import lib.kindleunpack as kindleunpack
 
 # Set to false to NOT save prefences to an ini file.
 # Starting directories for file dialogs will still persist
@@ -29,7 +28,7 @@ import kindleunpack
 PERSISTENT_PREFS = True
 
 from inspect import getfile, currentframe
-from prefs import getprefs, saveprefs
+from libgui.prefs import getprefs, saveprefs
 
 # Probably overkill, but to ensure cross-platform success no matter how the script is called/run...
 SCRIPT_NAME = utf8_str(getfile(currentframe()))
@@ -69,7 +68,7 @@ import tkMessageBox
 import tkFont
 import ttk
 
-from scrolltextwidget import ScrolledText
+from libgui.scrolltextwidget import ScrolledText
 
 class MainDialog(Tkinter.Frame):
     def __init__(self, root):
