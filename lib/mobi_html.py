@@ -4,7 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, utf8_str
+from .compatibility_utils import PY2, utf8_str
 
 if PY2:
     range = xrange
@@ -13,7 +13,7 @@ import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
 
-from mobi_utils import fromBase32
+from .mobi_utils import fromBase32
 
 class HTMLProcessor:
 

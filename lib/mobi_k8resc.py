@@ -4,9 +4,9 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import unicode_str
+from .compatibility_utils import unicode_str
 
-from mobi_utils import fromBase32
+from .mobi_utils import fromBase32
 
 _OPF_PARENT_TAGS = ['xml', 'package', 'metadata', 'dc-metadata',
                     'x-metadata', 'manifest', 'spine', 'tours', 'guide']

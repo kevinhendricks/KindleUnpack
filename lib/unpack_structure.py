@@ -4,10 +4,10 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import text_type
+from .compatibility_utils import text_type
 
-import unipath
-from unipath import pathof
+from . import unipath
+from .unipath import pathof
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -20,7 +20,7 @@ import re
 
 import zipfile
 import binascii
-from mobi_utils import mangle_fonts
+from .mobi_utils import mangle_fonts
 
 class unpackException(Exception):
     pass

@@ -5,7 +5,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, text_type, bchr, bord
+from .compatibility_utils import PY2, text_type, bchr, bord
 
 import binascii
 

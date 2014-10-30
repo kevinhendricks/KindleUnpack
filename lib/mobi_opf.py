@@ -4,10 +4,10 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import unicode_str, unescapeit
-from compatibility_utils import lzip
+from .compatibility_utils import unicode_str, unescapeit
+from .compatibility_utils import lzip
 
-from unipath import pathof
+from .unipath import pathof
 
 from xml.sax.saxutils import escape as xmlescape
 

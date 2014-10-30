@@ -4,7 +4,7 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from compatibility_utils import PY2, bchr, lmap, bstr
+from .compatibility_utils import PY2, bchr, lmap, bstr
 
 if PY2:
     range = xrange
