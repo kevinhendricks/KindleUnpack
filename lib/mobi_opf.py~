@@ -621,14 +621,13 @@ class OPFProcessor(object):
                             for i, value in enumerate(metadata[EXTH]):
                                 self.createMetaTag(self.exth_refines_metadata, 'file-as', value, id.get(i, defaultid))
                 else:
-                    if EXTH in metadata:
-                        if len(metadata[EXTH]) == 1 and len(id) == 1:
-                            attr = ' opf:file-as="%s"' % metadata[EXTH][0]
-                            attrib[0] = attr
-                        else:
-                            for i, value in enumerate(metadata[EXTH]):
-                                attr = ' id="#%s" opf:file-as="%s"\n' % (id.get(i, defaultid), value)
-                                self.extra_attributes.append(attr)
+                    if len(metadata[EXTH]) == 1 and len(id) == 1:
+                        attr = ' opf:file-as="%s"' % metadata[EXTH][0]
+                        attrib[0] = attr
+                    else:
+                        for i, value in enumerate(metadata[EXTH]):
+                            attr = ' id="#%s" opf:file-as="%s"\n' % (id.get(i, defaultid), value)
+                            self.extra_attributes.append(attr)
 
     def createMetadataForFixedlayout(self):
         # convert fixed layout to epub3 format if needed.
