@@ -3,14 +3,13 @@
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
 import sys
-sys.path.append('lib')
 import os, os.path, urllib
 import codecs
 
-from utf8_utils import add_cp65001_codec, utf8_argv, utf8_str
+from lib.utf8_utils import add_cp65001_codec, utf8_argv, utf8_str
 add_cp65001_codec()
 
-import path
+import lib.path as path
 
 if sys.platform.startswith("win"):
     from askfolder_ed import AskFolder
@@ -19,7 +18,7 @@ from Queue import Full
 from Queue import Empty
 from multiprocessing import Process, Queue
 
-import kindleunpack
+import lib.kindleunpack as kindleunpack
 
 # Set to false to NOT save prefences to an ini file.
 # Starting directories for file dialogs will still persist
