@@ -5,7 +5,7 @@
 from __future__ import unicode_literals, division, absolute_import, print_function
 
 from lib.compatibility_utils import PY2, PY3, utf8_str, unicode_str
-import lib.unipath as unipath
+from lib import unipath
 from lib.unipath import pathof
 
 import os
