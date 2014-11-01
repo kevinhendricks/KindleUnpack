@@ -4,12 +4,14 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from lib.compatibility_utils import PY3, unicode_str
+from lib.compatibility_utils import PY2, PY3, unicode_str
 from lib import unipath
 from lib.unipath import pathof
 
 import os
 import json
+if PY2:
+    import codecs
 
 def native_str(apath, encoding='utf-8'):
     apath = unicode_str(apath, encoding)
@@ -42,13 +44,17 @@ def getprefs(configfile, tkobj, PERSIST):
 
     if unipath.exists(configfile) and PERSIST:
         try:
-            with open(configfile, 'r') as f:
-                tmpprefs = json.load(f)
+            if PY3:
+                with open(configfile, 'r', encoding='utf-8') as f:
+                    tmpprefs = json.load(f)
+            else:
+                with codecs.open(configfile, 'r', encoding='utf-8') as f:
+                    tmpprefs = json.load(f)
         except:
             return prefs
 
         if 'mobipath' in tmpprefs.keys():
-            prefs['mobipath'] = unicode_str(tmpprefs['mobipath'],'utf-8')
+            prefs['mobipath'] = unicode_str(tmpprefs['mobipath'], 'utf-8')
         if 'outpath' in tmpprefs.keys():
             prefs['outpath'] = unicode_str(tmpprefs['outpath'], 'utf-8')
         if 'apnxpath' in tmpprefs.keys():
@@ -64,7 +70,7 @@ def getprefs(configfile, tkobj, PERSIST):
         if 'epubver' in tmpprefs.keys():
             prefs['epubver'] = tmpprefs['epubver']
         if 'windowgeometry' in tmpprefs.keys():
-            prefs['windowgeometry'] =tmpprefs['windowgeometry']
+            prefs['windowgeometry'] = tmpprefs['windowgeometry']
 
     return prefs
 
@@ -75,17 +81,17 @@ def saveprefs(configfile, prefs, tkobj):
     # mobipath
     apath = pathof(tkobj.mobipath.get())
     if apath is not None and unipath.isfile(apath):
-        prefs['mobipath'] = native_str(os.path.dirname(apath))
+        prefs['mobipath'] = os.path.dirname(apath)
 
     # outpath
     apath = pathof(tkobj.outpath.get())
     if apath is not None and unipath.isdir(apath):
-        prefs['outpath'] = native_str(apath)
+        prefs['outpath'] = apath
 
     # apnxpath
     apath = pathof(tkobj.apnxpath.get())
     if apath is not None and unipath.isfile(apath):
-        prefs['apnxpath'] = native_str(os.path.dirname(apath))
+        prefs['apnxpath'] = os.path.dirname(apath)
 
     prefs['splitvar'] = tkobj.splitvar.get()
     prefs['rawvar'] = tkobj.rawvar.get()
@@ -94,8 +100,12 @@ def saveprefs(configfile, prefs, tkobj):
     prefs['epubver'] = tkobj.epubver.current()
     prefs['windowgeometry'] = tkobj.root.geometry()
     try:
-        with open(configfile, 'w') as f:
-            json.dump(prefs, f, ensure_ascii=False, indent=4)
+        if PY3:
+            with open(configfile, 'w', encoding='utf-8') as f:
+                json.dump(prefs, f, ensure_ascii=False, indent=4)
+        else:
+            with codecs.open(configfile, 'w', encoding='utf-8') as f:
+                json.dump(prefs, f, ensure_ascii=False, indent=4)
         return 1
     except:
         pass
