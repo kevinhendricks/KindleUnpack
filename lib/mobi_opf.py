@@ -562,6 +562,12 @@ class OPFProcessor(object):
             epubver = '3'
         elif self.page_progression_direction == 'rtl':
             epubver = '3'
+        elif EXTH_TITLE_FURIGANA in metadata:
+            epubver = '3'
+        elif EXTH_CREATOR_FURIGANA in metadata:
+            epubver = '3'
+        elif EXTH_PUBLISHER_FURIGANA in metadata:
+            epubver = '3'
         elif k8resc is not None and k8resc.needEPUB3():
             epubver = '3'
         return epubver
