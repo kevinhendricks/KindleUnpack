@@ -30,10 +30,12 @@ HDImages/
 mobi7/
 mobi8/
 
+*.bak
 *.dat
 *.data
 *.pdf
 *.ini
+*.json
 *.mobi
 *.prc
 *.azw

@@ -4,16 +4,12 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
-from lib.compatibility_utils import PY2, PY3, utf8_str, unicode_str
+from lib.compatibility_utils import PY3, unicode_str
 from lib import unipath
 from lib.unipath import pathof
 
 import os
-
-try:
-    from configparser import RawConfigParser
-except ImportError:
-    from ConfigParser import RawConfigParser
+import json
 
 def native_str(apath, encoding='utf-8'):
     apath = unicode_str(apath, encoding)
@@ -23,8 +19,8 @@ def native_str(apath, encoding='utf-8'):
 
 def getprefs(configfile, tkobj, PERSIST):
     # To keep things simple for possible future preference additions/deletions:
-    # Try to stick to - TK Widget name = prefs dictionary key = ini.get|set name.
-    # EX: mobipath = prefs['mobipath'] = config.get('Defaults', mobipath).
+    # Try to stick to - TK Widget name = prefs dictionary key.
+    # EX: tkobj.outpath = prefs['outpath']
     prefs = {}
 
     # Sane defaults
@@ -45,81 +41,61 @@ def getprefs(configfile, tkobj, PERSIST):
     prefs['windowgeometry'] = ('%dx%d+%d+%d' % (rootsize + (x, y)))
 
     if unipath.exists(configfile) and PERSIST:
-        config = RawConfigParser()
         try:
-            if PY3:
-                config.read(configfile)
-            else:
-                with open(configfile, 'rb') as f:
-                    config.readfp(f)
+            with open(configfile, 'r') as f:
+                tmpprefs = json.load(f)
         except:
             return prefs
 
-        # Python 2.x's ConfigParser module will not save unicode strings to an ini file (at least on Windows)
-        # no matter how hard you try to smack it around and scare it into doing so.
-        # The workaround is to encode the file path using the utf-8 encoding
-        if config.has_option('Defaults', 'mobipath'):
-            prefs['mobipath'] = unicode_str(config.get('Defaults', 'mobipath'),'utf-8')
-        if config.has_option('Defaults', 'outpath'):
-            prefs['outpath'] = unicode_str(config.get('Defaults', 'outpath'), 'utf-8')
-        if config.has_option('Defaults', 'apnxpath'):
-            prefs['apnxpath'] = unicode_str(config.get('Defaults', 'apnxpath'), 'utf-8')
-        if config.has_option('Defaults', 'splitvar'):
-            prefs['splitvar'] = config.getint('Defaults', 'splitvar')
-        if config.has_option('Defaults', 'rawvar'):
-            prefs['rawvar'] = config.getint('Defaults', 'rawvar')
-        if config.has_option('Defaults', 'dbgvar'):
-            prefs['dbgvar'] = config.getint('Defaults', 'dbgvar')
-        if config.has_option('Defaults', 'hdvar'):
-            prefs['hdvar'] = config.getint('Defaults', 'hdvar')
-        if config.has_option('Defaults', 'epubver'):
-            prefs['epubver'] = config.getint('Defaults', 'epubver')
-        if config.has_option('Geometry', 'windowgeometry'):
-            prefs['windowgeometry'] = config.get('Geometry', 'windowgeometry')
+        if 'mobipath' in tmpprefs.keys():
+            prefs['mobipath'] = unicode_str(tmpprefs['mobipath'],'utf-8')
+        if 'outpath' in tmpprefs.keys():
+            prefs['outpath'] = unicode_str(tmpprefs['outpath'], 'utf-8')
+        if 'apnxpath' in tmpprefs.keys():
+            prefs['apnxpath'] = unicode_str(tmpprefs['apnxpath'], 'utf-8')
+        if 'splitvar' in tmpprefs.keys():
+            prefs['splitvar'] = tmpprefs['splitvar']
+        if 'rawvar' in tmpprefs.keys():
+            prefs['rawvar'] = tmpprefs['rawvar']
+        if 'dbgvar'in tmpprefs.keys():
+            prefs['dbgvar'] = tmpprefs['dbgvar']
+        if 'hdvar' in tmpprefs.keys():
+            prefs['hdvar'] = tmpprefs['hdvar']
+        if 'epubver' in tmpprefs.keys():
+            prefs['epubver'] = tmpprefs['epubver']
+        if 'windowgeometry' in tmpprefs.keys():
+            prefs['windowgeometry'] =tmpprefs['windowgeometry']
 
     return prefs
 
 
 def saveprefs(configfile, prefs, tkobj):
-    # tkobj name = prefs dictionary key = ini.get|set name
-    config = RawConfigParser()
-    config.add_section('Defaults')
+    # tkobj name = prefs dictionary key
 
     # mobipath
     apath = pathof(tkobj.mobipath.get())
     if apath is not None and unipath.isfile(apath):
-            config.set('Defaults', 'mobipath', native_str(os.path.dirname(apath)))
-    else:
-        config.set('Defaults', 'mobipath', native_str(prefs['mobipath']))
+        prefs['mobipath'] = native_str(os.path.dirname(apath))
 
     # outpath
     apath = pathof(tkobj.outpath.get())
     if apath is not None and unipath.isdir(apath):
-            config.set('Defaults', 'outpath', native_str(apath))
-    else:
-        config.set('Defaults', 'outpath', native_str(prefs['outpath']))
+        prefs['outpath'] = native_str(apath)
 
     # apnxpath
     apath = pathof(tkobj.apnxpath.get())
     if apath is not None and unipath.isfile(apath):
-            config.set('Defaults', 'apnxpath', native_str(os.path.dirname(apath)))
-    else:
-        config.set('Defaults', 'apnxpath', native_str(prefs['apnxpath']))
+        prefs['apnxpath'] = native_str(os.path.dirname(apath))
 
-    config.set('Defaults', 'splitvar', tkobj.splitvar.get())
-    config.set('Defaults', 'rawvar', tkobj.rawvar.get())
-    config.set('Defaults', 'dbgvar', tkobj.dbgvar.get())
-    config.set('Defaults', 'hdvar', tkobj.hdvar.get())
-    config.set('Defaults', 'epubver', tkobj.epubver.current())
-    config.add_section('Geometry')
-    config.set('Geometry', 'windowgeometry', tkobj.root.geometry())
+    prefs['splitvar'] = tkobj.splitvar.get()
+    prefs['rawvar'] = tkobj.rawvar.get()
+    prefs['dbgvar'] = tkobj.dbgvar.get()
+    prefs['hdvar'] = tkobj.hdvar.get()
+    prefs['epubver'] = tkobj.epubver.current()
+    prefs['windowgeometry'] = tkobj.root.geometry()
     try:
-        if PY3:
-            with open(configfile, 'w') as f:
-                config.write(f)
-        else:
-            with open(configfile, 'wb') as f:
-                config.write(f)
+        with open(configfile, 'w') as f:
+            json.dump(prefs, f, ensure_ascii=False, indent=4)
         return 1
     except:
         pass
