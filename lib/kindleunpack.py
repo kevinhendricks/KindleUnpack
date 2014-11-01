@@ -4,6 +4,8 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
+__path__ = ["lib", ".", "kindleunpack"]
+
 import sys
 import codecs
 import traceback
