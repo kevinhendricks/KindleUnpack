@@ -62,7 +62,7 @@ PROGNAME = unicode_str(os.path.splitext(SCRIPT_NAME)[0])
 
 # Include platform in the ini file name. That way, settings can still persist
 # in the event that different OSs access the same script via a network share/flash-drive.
-CONFIGFILE = unicode_str(os.path.join(SCRIPT_DIR, '{0}_{1}.ini'.format(PROGNAME, sys.platform[:3])))
+CONFIGFILE = unicode_str(os.path.join(SCRIPT_DIR, '{0}_{1}.json'.format(PROGNAME, sys.platform[:3])))
 
 # Wrap a stream so that output gets appended to shared queue
 # using utf-8 encoding

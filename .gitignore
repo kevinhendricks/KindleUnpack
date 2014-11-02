@@ -25,4 +25,21 @@ __pycache__/
 # PyBuilder
 target/
 
+# Files/folders used/produced when testing Kindleunpack
+HDImages/
+mobi7/
+mobi8/
+
+*.bak
+*.dat
+*.data
+*.pdf
 *.ini
+*.json
+*.mobi
+*.prc
+*.azw
+*.azw[34]
+
+# Folder to direct output to when testing command-line (will be ignored by git)
+testout/
