@@ -4,6 +4,14 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
+DEBUG_USE_ORDERED_DICTIONARY = False  # OrderedDict is supoorted >= python 2.7.
+""" set to True to use OrderedDict for MobiHeader.metadata."""
+
+if DEBUG_USE_ORDERED_DICTIONARY:
+    from collections import OrderedDict as dict_
+else:
+    dict_ = dict
+
 from .compatibility_utils import PY2, unicode_str, hexlify, bord
 
 if PY2:
@@ -466,7 +474,7 @@ class MobiHeader:
         self.fdst = 0xffffffff
         self.mlstart = self.sect.loadSection(self.start+1)[:4]
         self.rawSize = 0
-        self.metadata = {}
+        self.metadata = dict_()
 
         # set up for decompression/unpacking
         self.compression, = struct.unpack_from(b'>H', self.header, 0x0)

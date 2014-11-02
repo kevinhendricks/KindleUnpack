@@ -4,6 +4,14 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
+DEBUG_USE_ORDERED_DICTIONARY = False  # OrderedDict is supoorted >= python 2.7.
+""" set to True to use OrderedDict for K8RESCProcessor.parsetag.tattr."""
+
+if DEBUG_USE_ORDERED_DICTIONARY:
+    from collections import OrderedDict as dict_
+else:
+    dict_ = dict
+
 from .compatibility_utils import unicode_str
 
 from .mobi_utils import fromBase32
@@ -169,7 +177,7 @@ class K8RESCProcessor(object):
         p = 1
         tname = None
         ttype = None
-        tattr = {}
+        tattr = dict_()
         while s[p:p+1] == ' ' :
             p += 1
         if s[p:p+1] == '/':
