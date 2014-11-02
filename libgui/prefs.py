@@ -13,11 +13,6 @@ import json
 if PY2:
     import codecs
 
-def native_str(apath, encoding='utf-8'):
-    apath = unicode_str(apath, encoding)
-    if PY3:
-        return apath
-    return apath.encode(encoding)
 
 def getprefs(configfile, tkobj, PERSIST):
     # To keep things simple for possible future preference additions/deletions:
