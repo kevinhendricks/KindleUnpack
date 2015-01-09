@@ -4,6 +4,8 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
+from .compatibility_utils import unicode_str
+
 from .unipath import pathof
 import os
 import imghdr
@@ -32,7 +34,7 @@ MAX_HEIGHT = 4096
 
 
 def get_image_type(imgname, imgdata=None):
-    imgtype = imghdr.what(pathof(imgname), imgdata)
+    imgtype = unicode_str(imghdr.what(pathof(imgname), imgdata))
 
     # imghdr only checks for JFIF or Exif JPEG files. Apparently, there are some
     # with only the magic JPEG bytes out there...
