@@ -4,6 +4,8 @@
 
 from __future__ import unicode_literals, division, absolute_import, print_function
 
+from .compatibility_utils import PY2
+
 from .unipath import pathof
 import os
 import imghdr
@@ -48,7 +50,10 @@ def get_image_type(imgname, imgdata=None):
                 last-=1
             # Be extra safe, check the trailing bytes, too.
             if imgdata[last-2:last] == b'\xFF\xD9':
-                imgtype = "jpeg"
+                if PY2:
+                    imgtype = b"jpeg"
+                else:
+                    imgtype = "jpeg"
     return imgtype
 
 
