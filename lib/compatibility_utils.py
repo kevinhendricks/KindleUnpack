@@ -40,13 +40,14 @@ try:
 except ImportError:
     from urllib import unquote
 
-try:
-    import html
-except ImportError:
-    from HTMLParser import HTMLParser
-
 if PY2:
+    from HTMLParser import HTMLParser
     _h = HTMLParser()
+elif sys.version_info[1] < 4:
+    import html.parser
+    _h = html.parser.HTMLParser()
+else:
+    import html as _h
 
 if PY3:
     text_type = str
@@ -214,9 +215,7 @@ def unquoteurl(href):
 
 # unescape html
 def unescapeit(sval):
-    if PY2:
-        return _h.unescape(sval)
-    return html.unescape(sval)
+    return _h.unescape(sval)
 
 # Python 2.X commandline parsing under Windows has been horribly broken for years!
 # Use the following code to emulate full unicode commandline parsing on Python 2
