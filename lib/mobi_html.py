@@ -148,8 +148,9 @@ class XHTMLK8Processor:
 
         # we are free to cut and paste as we see fit
         # we can safely remove all of the Kindlegen generated aid tags
+        # change aid ids that are in k8proc.linked_aids to xhtml ids
         find_tag_with_aid_pattern = re.compile(r'''(<[^>]*\said\s*=[^>]*>)''', re.IGNORECASE)
-        within_tag_aid_position_pattern = re.compile(r'''\said\s*=['"][^'"]*['"]''')
+        within_tag_aid_position_pattern = re.compile(r'''\said\s*=['"]([^'"]*)['"]''')
         for i in xrange(len(parts)):
             part = parts[i]
             srcpieces = find_tag_with_aid_pattern.split(part)
@@ -157,7 +158,13 @@ class XHTMLK8Processor:
                 tag = srcpieces[j]
                 if tag.startswith('<'):
                     for m in within_tag_aid_position_pattern.finditer(tag):
+                        try:
+                            aid = m.group(1)
+                        except IndexError:
+                            aid = None
                         replacement = ''
+                        if aid in self.k8proc.linked_aids:
+                            replacement = ' id="%s%s%s%s"' % ('aid-', aid, '-', self.k8proc.aid_anchor_suffix)
                         tag = within_tag_aid_position_pattern.sub(replacement, tag, 1)
                     srcpieces[j] = tag
             part = "".join(srcpieces)

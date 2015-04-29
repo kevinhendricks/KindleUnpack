@@ -4,6 +4,7 @@
 import os
 import struct
 import re
+from uuid import uuid4
 from mobi_index import MobiIndex
 from mobi_utils import fromBase32
 from path import pathof
@@ -53,6 +54,8 @@ class K8Processor:
         self.flowinfo = []
         self.parts = None
         self.partinfo = []
+        self.linked_aids = set()
+        self.aid_anchor_suffix = uuid4().hex
         self.fdsttbl= [0,0xffffffff]
         self.DEBUG = debug
 
@@ -371,6 +374,7 @@ class K8Processor:
         textblock = textblock[0:npos]
         id_pattern = re.compile(r'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
         name_pattern = re.compile(r'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        aid_pattern = re.compile(r'''<[^>]+\s(?:aid|AID)\s*=\s*['"]([^'"]+)['"]''')
         for tag in reverse_tag_iter(textblock):
             # any ids in the body should default to top of file
             if tag[0:6] == '<body ':
@@ -379,6 +383,10 @@ class K8Processor:
                 m = id_pattern.match(tag) or name_pattern.match(tag)
                 if m is not None:
                     return m.group(1)
+                m = aid_pattern.match(tag)
+                if m is not None:
+                    self.linked_aids.add(m.group(1))
+                    return '%s%s%s%s' % ('aid-', m.group(1), '-', self.aid_anchor_suffix)
         return ''
 
     # do we need to do deep copying
