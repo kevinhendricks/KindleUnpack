@@ -18,6 +18,7 @@ import struct
 import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
+from uuid import uuid4
 
 from .mobi_index import MobiIndex
 from .mobi_utils import fromBase32
@@ -68,6 +69,8 @@ class K8Processor:
         self.flowinfo = []
         self.parts = None
         self.partinfo = []
+        self.linked_aids = set()
+        self.aid_anchor_suffix = bstr(uuid4().hex)
         self.fdsttbl= [0,0xffffffff]
         self.DEBUG = debug
 
@@ -392,6 +395,7 @@ class K8Processor:
         textblock = textblock[0:npos]
         id_pattern = re.compile(br'''<[^>]*\sid\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
         name_pattern = re.compile(br'''<[^>]*\sname\s*=\s*['"]([^'"]*)['"]''',re.IGNORECASE)
+        aid_pattern = re.compile(br'''<[^>]+\s(?:aid|AID)\s*=\s*['"]([^'"]+)['"]''')
         for tag in reverse_tag_iter(textblock):
             # any ids in the body should default to top of file
             if tag[0:6] == b'<body ':
@@ -400,6 +404,10 @@ class K8Processor:
                 m = id_pattern.match(tag) or name_pattern.match(tag)
                 if m is not None:
                     return m.group(1)
+                m = aid_pattern.match(tag)
+                if m is not None:
+                    self.linked_aids.add(m.group(1))
+                    return b'aid-' + m.group(1) + b'-' + self.aid_anchor_suffix
         return b''
 
     # do we need to do deep copying
