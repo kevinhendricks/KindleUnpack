@@ -170,7 +170,7 @@ class XHTMLK8Processor:
                             aid = None
                         replacement = b''
                         if aid in self.k8proc.linked_aids:
-                            replacement = b' id="aid-' + aid + b'-' + self.k8proc.aid_anchor_suffix + b'"'
+                            replacement = b' id="aid-' + aid + b'"'
                         tag = within_tag_aid_position_pattern.sub(replacement, tag, 1)
                     srcpieces[j] = tag
             part = b"".join(srcpieces)
