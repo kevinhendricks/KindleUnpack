@@ -194,14 +194,23 @@ class OPFProcessor(object):
             # It doesn't need to be _THE_ unique identifier to work as a key
             # for obfuscated fonts in Sigil, ADE and calibre. Its just has
             # to use the opf:scheme="UUID" and have the urn:uuid: prefix.
-            data.append('<dc:identifier opf:scheme="UUID">urn:uuid:'+self.BookId+'</dc:identifier>\n')
+            if self.target_epubver == '3':
+                data.append('<dc:identifier>urn:uuid:'+self.BookId+'</dc:identifier>\n')
+            else:
+                data.append('<dc:identifier opf:scheme="UUID">urn:uuid:'+self.BookId+'</dc:identifier>\n')
 
         handleTag(data, metadata, 'Creator', 'dc:creator', self.creator_attrib)
         handleTag(data, metadata, 'Contributor', 'dc:contributor')
         handleTag(data, metadata, 'Publisher', 'dc:publisher', self.publisher_attrib)
         handleTag(data, metadata, 'Source', 'dc:source')
         handleTag(data, metadata, 'Type', 'dc:type')
-        handleTag(data, metadata, 'ISBN', 'dc:identifier opf:scheme="ISBN"')
+        if self.target_epubver == '3':
+            if 'ISBN' in metadata:
+                for i, value in enumerate(metadata['ISBN']):
+                    res = '<dc:identifier>urn:isbn:%s</dc:identifier>\n' % self.escapeit(value)
+                    data.append(res)
+        else:
+            handleTag(data, metadata, 'ISBN', 'dc:identifier opf:scheme="ISBN"')
         if 'Subject' in metadata:
             if 'SubjectCode' in metadata:
                 codeList = metadata['SubjectCode']
@@ -493,6 +502,7 @@ class OPFProcessor(object):
             navname = None
             package = '<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid">\n'
             tours = '<tours>\n</tours>\n'
+            metadata_tag = '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">'
         else:
             has_ncx = EPUB3_WITH_NCX
             has_guide = EPUB3_WITH_GUIDE
@@ -502,10 +512,11 @@ class OPFProcessor(object):
             navname = NAVIGATION_DOCUMENT
             package = '<package version="3.0" xmlns="http://www.idpf.org/2007/opf" prefix="rendition: http://www.idpf.org/vocab/rendition/#" unique-identifier="uid">\n'
             tours = ''
+            metadata_tag = '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+
         data = []
         data.append('<?xml version="1.0" encoding="utf-8"?>\n')
         data.append(package)
-        metadata_tag = '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">'
         opf_metadata = self.buildOPFMetadata(metadata_tag, has_obfuscated_fonts)
         data += opf_metadata
         [opf_manifest, spinerefs] = self.buildOPFManifest(ncxname, navname)
