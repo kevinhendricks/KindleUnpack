@@ -122,7 +122,13 @@ def getLanguage(langID, sublangID):
             52 : {0 : 'xh'},  # Xhosa
             53 : {0 : 'zu'},  # Zulu
     }
-    return mobilangdict.get(int(langID), {0 : 'en'}).get(int(sublangID), 'en')
+    lang = "en"
+    if langID in mobilangdict:
+        subdict = mobilangdict[langID]
+        lang = subdict[0]
+        if sublangID in subdict:
+            lang = subdict[sublangID]
+    return lang
 
 
 def toHex(byteList):
