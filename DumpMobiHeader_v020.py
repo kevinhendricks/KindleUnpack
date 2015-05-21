@@ -265,6 +265,20 @@ class HdrParser:
             self.exth = self.header[exth_offset:]
             self.extra = self.header[self.length+ 16: exth_offset]
 
+        self.title = ""
+        toff = self.hdr['title_offset']
+        tlen = self.hdr['title_length']
+        codepage = self.hdr['codepage']
+        self.codec = 'windows-1252'
+        codec_map = {
+                1252 : 'windows-1252',
+                65001: 'utf-8',
+                }
+        if codepage in codec_map:
+            self.codec = codec_map[codepage]
+        if toff != 0xffffffff and tlen != 0xffffffff:
+            self.title=self.header[toff:toff+tlen].decode(self.codec)
+
     def dumpHeaderInfo(self):
         for key in self.mobi_header_sorted_keys:
             (pos, format, tot_len) = self.mobi_header[key]
@@ -274,6 +288,7 @@ class HdrParser:
                 else:
                     fmt_string = "  Field: %20s   Offset: 0x%03x   Width:  %d   Value: %s"
                 print(fmt_string % (key, pos, tot_len, self.hdr[key]))
+        print("Title: ",self.title)
         print("Extra Region Length: 0x%0x" % len(self.extra))
         print("EXTH Region Length:  0x%0x" % len(self.exth))
         print("EXTH MetaData")
@@ -283,14 +298,7 @@ class HdrParser:
 
     def dump_exth(self):
         # determine text encoding
-        codepage = self.hdr['codepage']
-        codec = 'windows-1252'
-        codec_map = {
-                1252 : 'windows-1252',
-                65001: 'utf-8',
-                }
-        if codepage in codec_map:
-            codec = codec_map[codepage]
+        codec = self.codec
         if self.exth == b'':
             return
         extheader = self.exth
@@ -540,7 +548,7 @@ def usage(progname):
 
 
 def main(argv=sys.argv):
-    print("DumpMobiHeader v019")
+    print("DumpMobiHeader v020")
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")
