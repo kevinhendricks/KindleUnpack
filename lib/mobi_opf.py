@@ -225,7 +225,13 @@ class OPFProcessor(object):
                 data.append(self.escapeit(metadata['Subject'][i])+'</dc:subject>\n')
             del metadata['Subject']
         handleTag(data, metadata, 'Description', 'dc:description')
-        handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
+        if self.target_epubver == '3':
+            if 'Published' in metadata:
+                for i, value in enumerate(metadata['Published']):
+                    res = '<dc:date>%s</dc:date>\n' % self.escapeit(value)
+                    data.append(res)
+        else:
+            handleTag(data, metadata, 'Published', 'dc:date opf:event="publication"')
         handleTag(data, metadata, 'Rights', 'dc:rights')
 
         if self.epubver == 'F':
