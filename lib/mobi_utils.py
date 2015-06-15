@@ -38,8 +38,8 @@ def getLanguage(langID, sublangID):
             26 : {0 : 'hr', 3 : 'sr'},  # Croatian, Serbian
              5 : {0 : 'cs'},  # Czech
              6 : {0 : 'da'},  # Danish
-            19 : {1 : 'nl' , 2 : 'nl-be'},  # Dutch / Flemish,  Dutch (Belgium)
-             9 : {1 : 'en' , 3 : 'en-au' , 40 : 'en-bz' , 4 : 'en-ca' , 6 : 'en-ie' , 8 : 'en-jm' , 5 : 'en-nz' , 13 : 'en-ph' ,
+            19 : {0: 'nl', 1 : 'nl' , 2 : 'nl-be'},  # Dutch / Flemish,  Dutch (Belgium)
+             9 : {0: 'en', 1 : 'en' , 3 : 'en-au' , 40 : 'en-bz' , 4 : 'en-ca' , 6 : 'en-ie' , 8 : 'en-jm' , 5 : 'en-nz' , 13 : 'en-ph' ,
                   7 : 'en-za' , 11 : 'en-tt' , 2 : 'en-gb', 1 : 'en-us' , 12 : 'en-zw'},
              # English,  English (Australia),  English (Belize),  English (Canada),
              # English (Ireland),  English (Jamaica),  English (New Zealand),  English
@@ -49,10 +49,10 @@ def getLanguage(langID, sublangID):
             56 : {0 : 'fo'},  # Faroese
             41 : {0 : 'fa'},  # Farsi / Persian
             11 : {0 : 'fi'},  # Finnish
-            12 : {1 : 'fr' , 2 : 'fr-be' , 3 : 'fr-ca' , 5 : 'fr-lu' , 6 : 'fr-mc' , 4 : 'fr-ch'},
+            12 : {0 : 'fr', 1 : 'fr' , 2 : 'fr-be' , 3 : 'fr-ca' , 5 : 'fr-lu' , 6 : 'fr-mc' , 4 : 'fr-ch'},
             # French,  French (Belgium),  French (Canada),  French (Luxembourg),  French (Monaco),  French (Switzerland)
             55 : {0 : 'ka'},  # Georgian
-             7 : {1 : 'de' , 3 : 'de-at' , 5 : 'de-li' , 4 : 'de-lu' , 2 : 'de-ch'},
+             7 : {0 : 'de', 1 : 'de' , 3 : 'de-at' , 5 : 'de-li' , 4 : 'de-lu' , 2 : 'de-ch'},
              # German,  German (Austria),  German (Liechtenstein),  German (Luxembourg),  German (Switzerland)
              8 : {0 : 'el'},  # Greek, Modern (1453-)
             71 : {0 : 'gu'},  # Gujarati
@@ -61,7 +61,7 @@ def getLanguage(langID, sublangID):
             14 : {0 : 'hu'},  # Hungarian
             15 : {0 : 'is'},  # Icelandic
             33 : {0 : 'id'},  # Indonesian
-            16 : {1 : 'it' , 2 : 'it-ch'},  # Italian,  Italian (Switzerland)
+            16 : {0 : 'it', 1 : 'it' , 2 : 'it-ch'},  # Italian,  Italian (Switzerland)
             17 : {0 : 'ja'},  # Japanese
             75 : {0 : 'kn'},  # Kannada
             63 : {0 : 'kk'},  # Kazakh
@@ -78,7 +78,7 @@ def getLanguage(langID, sublangID):
             20 : {0 : 'no'},  # Norwegian
             72 : {0 : 'or'},  # Oriya
             21 : {0 : 'pl'},  # Polish
-            22 : {2 : 'pt' , 1 : 'pt-br'},  # Portuguese,  Portuguese (Brazil)
+            22 : {0 : 'pt', 2 : 'pt' , 1 : 'pt-br'},  # Portuguese,  Portuguese (Brazil)
             70 : {0 : 'pa'},  # Punjabi
             23 : {0 : 'rm'},  # "Rhaeto-Romanic" (IANA: Romansh)
             24 : {0 : 'ro'},  # Romanian
@@ -117,7 +117,7 @@ def getLanguage(langID, sublangID):
             31 : {0 : 'tr'},  # Turkish
             34 : {0 : 'uk'},  # Ukrainian
             32 : {0 : 'ur'},  # Urdu
-            67 : {2 : 'uz'},  # Uzbek
+            67 : {0 : 'uz', 2 : 'uz'},  # Uzbek
             42 : {0 : 'vi'},  # Vietnamese
             52 : {0 : 'xh'},  # Xhosa
             53 : {0 : 'zu'},  # Zulu
