@@ -656,7 +656,7 @@ def processMobi7(mh, metadata, sect, files, rscnames):
         for i in range(1,len(guidepieces), 2):
             reftag = guidepieces[i]
             # remove any href there now to replace with filepos
-            reftag = re.sub(br'''href\s*=[^'"]*['"][^'"]*['"]''','', reftag)
+            reftag = re.sub(br'''href\s*=[^'"]*['"][^'"]*['"]''',b'', reftag)
             # make sure the reference tag ends properly
             if not reftag.endswith(b"/>"):
                 reftag = reftag[0:-1] + b"/>"
