@@ -277,7 +277,7 @@ class HdrParser:
         if codepage in codec_map:
             self.codec = codec_map[codepage]
         if toff != 0xffffffff and tlen != 0xffffffff:
-            self.title=self.header[toff:toff+tlen].decode(self.codec)
+            self.title=self.header[toff:toff+tlen].decode(self.codec, errors='replace')
 
     def dumpHeaderInfo(self):
         for key in self.mobi_header_sorted_keys:
@@ -388,7 +388,7 @@ class HdrParser:
             content = extheader[pos + 8: pos + size]
             if id in id_map_strings:
                 name = id_map_strings[id]
-                print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec)))
+                print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec, errors='replace')))
             elif id in id_map_values:
                 name = id_map_values[id]
                 if size == 9:
@@ -510,7 +510,7 @@ def dump_contexth(cpage, extheader):
         content = extheader[pos + 8: pos + size]
         if id in id_map_strings:
             name = id_map_strings[id]
-            print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec)))
+            print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec, errors='replace')))
         elif id in id_map_values:
             name = id_map_values[id]
             if size == 9:
@@ -548,7 +548,7 @@ def usage(progname):
 
 
 def main(argv=sys.argv):
-    print("DumpMobiHeader v020")
+    print("DumpMobiHeader v021")
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")
