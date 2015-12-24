@@ -135,7 +135,7 @@ def dump_contexth(cpage, extheader):
         content = extheader[pos + 8: pos + size]
         if id in id_map_strings:
             name = id_map_strings[id]
-            print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec)))
+            print('\n    Key: "%s"\n        Value: "%s"' % (name, content.decode(codec, errors='replace')))
         elif id in id_map_values:
             name = id_map_values[id]
             if size == 9:
@@ -451,7 +451,7 @@ class MobiHeader:
         self.records, = struct.unpack_from(b'>H', self.header, 0x8)
 
         # set defaults in case this is a PalmDOC
-        self.title = self.sect.palmname.decode('latin-1')
+        self.title = self.sect.palmname.decode('latin-1', errors='replace')
         self.length = len(self.header)-16
         self.type = 3
         self.codepage = 1252
@@ -509,7 +509,7 @@ class MobiHeader:
         # title
         toff, tlen = struct.unpack(b'>II', self.header[0x54:0x5c])
         tend = toff + tlen
-        self.title=self.header[toff:tend].decode(self.codec)
+        self.title=self.header[toff:tend].decode(self.codec, errors='replace')
 
         exth_flag, = struct.unpack(b'>L', self.header[0x80:0x84])
         self.hasExth = exth_flag & 0x40
@@ -608,7 +608,7 @@ class MobiHeader:
             content = self.exth[pos + 8: pos + size]
             if id in MobiHeader.id_map_strings:
                 exth_name = MobiHeader.id_map_strings[id]
-                print('{0: >3d} {1: >4d} {2: <30s} {3:s}'.format(id, contentsize, exth_name, content.decode(codec)))
+                print('{0: >3d} {1: >4d} {2: <30s} {3:s}'.format(id, contentsize, exth_name, content.decode(codec, errors='replace')))
             elif id in MobiHeader.id_map_values:
                 exth_name = MobiHeader.id_map_values[id]
                 if size == 9:
@@ -664,9 +664,9 @@ class MobiHeader:
         if title_offset == 0:
             title_offset = len(self.header)
             title_length = 0
-            self.title = self.sect.palmname.decode('latin-1')
+            self.title = self.sect.palmname.decode('latin-1', errors='replace')
         else:
-            self.title = self.header[title_offset:title_offset+title_length].decode(self.codec)
+            self.title = self.header[title_offset:title_offset+title_length].decode(self.codec, errors='replace')
             # title record always padded with two nul bytes and then padded with nuls to next 4 byte boundary
             title_length = ((title_length+2+3)>>2)<<2
 
@@ -815,7 +815,7 @@ class MobiHeader:
                 content = extheader[pos + 8: pos + size]
                 if id in MobiHeader.id_map_strings:
                     name = MobiHeader.id_map_strings[id]
-                    addValue(name, content.decode(codec))
+                    addValue(name, content.decode(codec, errors='replace'))
                 elif id in MobiHeader.id_map_values:
                     name = MobiHeader.id_map_values[id]
                     if size == 9:
