@@ -41,13 +41,13 @@ BEGIN_INFO_ONLY = '<!-- BEGIN INFORMATION ONLY '
 END_INFO_ONLY = 'END INFORMATION ONLY -->'
 """ The comment to indicate the end of metadata which will be ignored by kindlegen. """
 
-EXTH_TITLE_FURIGANA = 'Unknown_508'
+EXTH_TITLE_FURIGANA = 'Title-Pronunciation'
 """ The name for Title Furigana(similar to file-as) set by KDP. """
 
-EXTH_CREATOR_FURIGANA = 'Unknown_517'
+EXTH_CREATOR_FURIGANA = 'Author-Pronunciation'
 """ The name for Creator Furigana(similar to file-as) set by KDP. """
 
-EXTH_PUBLISHER_FURIGANA = 'Unknown_522'
+EXTH_PUBLISHER_FURIGANA = 'Publisher-Pronunciation''
 """ The name for Publisher Furigana(similar to file-as) set by KDP. """
 
 EXTRA_ENTITIES = {'"': '&quot;', "'": "&apos;"}
