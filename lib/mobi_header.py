@@ -118,7 +118,7 @@ def dump_contexth(cpage, extheader):
         531 : 'Dictionary_In_Langague',
         532 : 'Dictionary_Out_Language',
         533 : 'Font_Converted',
-        534 : 'Amazon_Creator_Info'
+        534 : 'Amazon_Creator_Info',
         535 : 'Creator-Build-Tag',
         536 : 'HD-Media-Containers-Info',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Resource-Container-Fidelity',
@@ -451,7 +451,7 @@ class MobiHeader:
         531 : 'Dictionary_In_Langague',
         532 : 'Dictionary_Out_Language',
         533 : 'Font_Converted',
-        534 : 'Amazon_Creator_Info'
+        534 : 'Amazon_Creator_Info',
         535 : 'Creator-Build-Tag',
         536 : 'HD-Media-Containers-Info',  # CONT_Header is 0, Ends with CONTAINER_BOUNDARY (or Asset_Type?)
         538 : 'Resource-Container-Fidelity',

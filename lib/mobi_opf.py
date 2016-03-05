@@ -47,7 +47,7 @@ EXTH_TITLE_FURIGANA = 'Title-Pronunciation'
 EXTH_CREATOR_FURIGANA = 'Author-Pronunciation'
 """ The name for Creator Furigana(similar to file-as) set by KDP. """
 
-EXTH_PUBLISHER_FURIGANA = 'Publisher-Pronunciation''
+EXTH_PUBLISHER_FURIGANA = 'Publisher-Pronunciation'
 """ The name for Publisher Furigana(similar to file-as) set by KDP. """
 
 EXTRA_ENTITIES = {'"': '&quot;', "'": "&apos;"}
