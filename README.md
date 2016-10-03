@@ -45,7 +45,7 @@ folder for the KindleUnpack.py python program and its support modules.  You shou
 then be able to run KindleUnpack.py by the following command:
 
 
-python kindle_unpack.py [-r -s -d -h -i] [-p APNX_FILE] INPUT_FILE OUTPUT_FOLDER
+python kindleunpack.py [-r -s -d -h -i] [-p APNX_FILE] INPUT_FILE OUTPUT_FOLDER
 
 where you replace:
 
