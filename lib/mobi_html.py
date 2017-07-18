@@ -213,6 +213,7 @@ class XHTMLK8Processor:
         url_img_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)\?mime=image/[^\)]*["')]''', re.IGNORECASE)
         font_index_pattern = re.compile(br'''[('"]kindle:embed:([0-9|A-V]+)["')]''', re.IGNORECASE)
         url_css_index_pattern = re.compile(br'''kindle:flow:([0-9|A-V]+)\?mime=text/css[^\)]*''', re.IGNORECASE)
+        url_svg_image_pattern = re.compile(br'''kindle:flow:([0-9|A-V]+)\?mime=image/svg\+xml[^\)]*''', re.IGNORECASE)
 
         for i in range(1, self.k8proc.getNumberOfFlows()):
             [ftype, format, dir, filename] = self.k8proc.getFlowInfo(i)
@@ -273,6 +274,14 @@ class XHTMLK8Processor:
                     [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
                     replacement = b'"../' + utf8_str(pdir) + b'/' + utf8_str(fnm) + b'"'
                     tag = url_css_index_pattern.sub(replacement, tag, 1)
+                    self.used[fnm] = 'used'
+
+                # process links to svg images
+                for m in url_svg_image_pattern.finditer(tag):
+                    num = fromBase32(m.group(1))
+                    [typ, fmt, pdir, fnm] = self.k8proc.getFlowInfo(num)
+                    replacement = b'"../' + utf8_str(pdir) + b'/' + utf8_str(fnm) + b'"'
+                    tag = url_svg_image_pattern.sub(replacement, tag, 1)
                     self.used[fnm] = 'used'
 
                 srcpieces[j] = tag
