@@ -10,9 +10,10 @@ html 3.2 and images folder that can then be edited and reprocessed by MobiPocket
 - Kindle Print Replica eBook as unpacked to the original PDF and any associated images.
 - Kindle KF8 only ebooks (.azw3) are unpacked into an EPUB-like structure that may or
 may not be a fully valid EPUB depending on if a fully valid EPUB was originally provided
-to kindlegen as input.  NOTE: The generated EPUB should be validated using an EPUB validator
-and should changes be needed, it should load properly into Sigil and Calibre either of which
-can be used to edit the result to create a fully valid EPUB.
+to kindlegen as input.  
+  - NOTE: The generated EPUB should be validated using an EPUB validator
+  and should changes be needed, it should load properly into Sigil and Calibre either of which
+  can be used to edit the result to create a fully valid EPUB.
 - Newer Kindle ebooks which have both KF8 and older versions inside are unpacked into two
 different parts: the first being the older MobiPocket format ebook parts and the second being
 an EPUB-like structure that can be edited using Sigil.
@@ -21,7 +22,7 @@ The KindleUnpack program currently requires Python 2.7.x to function properly. B
 underway to create a version that will work on both Python 2.7.x and Python 3.4.x or later.
 
 On Windows machines we strongly recommend you install the free version of ActiveState's
-Active Python 2.7.X or later as it properly installs all of the required parts including
+Active Python 2.7.x or later as it properly installs all of the required parts including
 the tk widget kit and updates the system path on Windows machines.  The official installer
 from python.org sometimes does not properly handle this for Windows machines.
 
