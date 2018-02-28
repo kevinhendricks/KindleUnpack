@@ -1,9 +1,9 @@
 # KindleUnpack
 
-Python-based software to unpack Amazon / Kindlegen generated ebooks
+Python-based software to unpack Amazon / Kindlegen generated ebooks.
 
 KindleUnpack unpacks a non-DRM Kindle/MobiPocket ebook into its component parts
-which change depending on the type of Kindle/Mobi ebook being processed
+which change depending on the type of Kindle/Mobi ebook being processed.
 
 - MobiPocket and early Kindle version 7 or less ebooks are unpacked to the original
 html 3.2 and images folder that can then be edited and reprocessed by MobiPocketCreator.
@@ -33,7 +33,7 @@ Linux users need install nothing extra.
 To install KindleUnpack, simply find a nice location on your machine and fully unzip it.
 Do not move the KindleUnpack.pyw program away from its associated "lib" folder.  If you
 have a proper Python 2.7 or later installation on your machine, you should be able to
-simply double-click the KindleUnpack.pyw icon and the gui interface should start
+simply double-click the KindleUnpack.pyw icon and the gui interface should start.
 
 If you would prefer a command-line interface, simply look inside KindleUnpack's "lib"
 folder for the KindleUnpack.py python program and its support modules.  You should
@@ -78,7 +78,7 @@ Look under E-Book Formats > Kindle Formats > KindleUnpack (MobiUnpack).
 
 KindleUnpack
 
-Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>
+Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>.
 
 Extensive Extensions and Improvements Copyright © 2009-2014 By P. Durrant, K. Hendricks,
 S. Siebert, fandrieu, DiapDealer, nickredding, tkeo.
