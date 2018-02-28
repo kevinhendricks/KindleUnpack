@@ -58,12 +58,12 @@ where you replace:
 `-s`               split combination mobis into older mobi and mobi KF8 ebooks
 
 `-p APNX_FILE`     path to a .apnx file that contains real page numbers associated
-                 with an azw3 ebook (optional).  Note: many apnx files have
-                 arbitrarily assigned page offsets that will confuse KindleUnpack
-                 if used
+                   with an azw3 ebook (optional).  Note: many apnx files have
+                   arbitrarily assigned page offsets that will confuse KindleUnpack
+                   if used
 
-`--epub_version=`   specify EPUB version to unpack to: 2, 3 or A (for automatic) or
-                    F for Force to EPUB2, default is 2
+`--epub_version=`  specify EPUB version to unpack to: 2, 3 or A (for automatic) or
+                   F for Force to EPUB2, default is 2
 
 `-r`               write raw data to the output folder
 
