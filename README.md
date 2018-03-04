@@ -43,41 +43,40 @@ If you would prefer a command-line interface, simply look inside KindleUnpack's 
 folder for the KindleUnpack.py python program and its support modules.  You should 
 then be able to run KindleUnpack.py by the following command:
 
-
+```sh
 python kindleunpack.py [-r -s -d -h -i] [-p APNX_FILE] INPUT_FILE OUTPUT_FOLDER
+```
 
 where you replace:
 
-   INPUT_FILE      - path to the desired Kindle/MobiPocket ebook
+`INPUT_FILE`      - path to the desired Kindle/MobiPocket ebook
 
-   OUTPUT_FOLDER   - path to folder where the ebook will be unpacked
+`OUTPUT_FOLDER`   - path to folder where the ebook will be unpacked
 
-Options:
-    -h               print this help message
+### Options
 
-    -i               use HDImages to overwrite lower resolution versions, if present
+`-h`               print this help message
 
-    -s               split combination mobis into older mobi and mobi KF8 ebooks
+`-i`               use HDImages to overwrite lower resolution versions, if present
 
-    -p APNX_FILE     path to a .apnx file that contains real page numbers associated
-                         with an azw3 ebook (optional).  Note: many apnx files have 
-                         arbitrarily assigned page offsets that will confuse KindleUnpack 
-                         if used
+`-s`               split combination mobis into older mobi and mobi KF8 ebooks
 
-   --epub_version=   specify epub version to unpack to: 2, 3 or A (for automatic) or 
-                        F for Force to epub2, default is 2
+`-p APNX_FILE`     path to a .apnx file that contains real page numbers associated
+                   with an azw3 ebook (optional).  Note: many apnx files have
+                   arbitrarily assigned page offsets that will confuse KindleUnpack
+                   if used
 
-    -r               write raw data to the output folder
+`--epub_version=`  specify EPUB version to unpack to: 2, 3 or A (for automatic) or
+                   F for Force to EPUB2, default is 2
 
-    -d               dump headers and other debug info to output and extra files
+`-r`               write raw data to the output folder
 
-
+`-d`               dump headers and other debug info to output and extra files
 
 Please report any bugs or comments/requests our sticky forum on the Mobileread website.  
 It can be found at http://www.mobileread.com/forums.  
 
 Look under E-Book Formats > Kindle Formats > KindleUnpack (MobiUnpack).
-
 
 License Information
 
