@@ -10,7 +10,7 @@ which change depending on the type of Kindle/Mobi ebook being processed
             original html 3.2 and images folder that can then be edited and reprocessed by 
             MobiPocketCreator.
 
-	- Kindle Print Replica ebook as unpacked to the original PDF and any associated images.
+	- Kindle Print Replica ebook are unpacked to the original PDF and any associated images.
 
 	- Kindle KF8 only ebooks (.azw3) are unpacked into an epub-like structure that may or 
             may not be a fully valid epub depending on if a fully valid epub was 
@@ -23,13 +23,12 @@ which change depending on the type of Kindle/Mobi ebook being processed
             two different parts: the first being the older MobiPocket format ebook parts 
             and the second being an epub-like structure that can be edited using Sigil
 
-The KindleUnpack program currently requires Python 2.7.X to function properly. But work is 
-underway to create a version that will work on both Python 2.7.X and Python 3.4.X or later.
+The KindleUnpack program requires Python 2.7.X or Python 3.4 or later to function properly. 
 
 On Windows machines we strongly recommend you install the free version of ActiveState's 
-Active Python 2.7.X or later as it properly installs all of the required parts including 
-the tk widget kit and updates the system path on Windows machines.  The official installer 
-from python.org sometimes does not properly handle this for Windows machines.
+Active Python 2.7.X or 3.4.X or later as it properly installs all of the required parts 
+including the tk widget kit and updates the system path on Windows machines.  The official 
+installer from python.org sometimes does not properly handle this for Windows machines.
 
 On Mac OS X 10.6.X and later and almost all recent Linux versions, the required version 
 of Python is already installed as part of the official OS installation so Mac OS X and 
