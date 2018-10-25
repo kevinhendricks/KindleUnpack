@@ -6,7 +6,7 @@ from __future__ import unicode_literals, division, absolute_import, print_functi
 
 import os
 
-__path__ = ["lib", os.path.dirname(__file__), "kindleunpack"]
+__path__ = ["lib", os.path.dirname(os.path.realpath(__file__)), "kindleunpack"]
 
 import sys
 import codecs
