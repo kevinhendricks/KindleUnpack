@@ -6,11 +6,14 @@ from __future__ import unicode_literals, division, absolute_import, print_functi
 
 import os
 from .unipath import pathof
+from .compatibility_utils import unescapeit
 
 
 import re
 # note: re requites the pattern to be the exact same type as the data to be searched in python3
 # but u"" is not allowed for the pattern itself only b""
+
+from xml.sax.saxutils import escape as xmlescape
 
 from .mobi_utils import toBase32
 from .mobi_index import MobiIndex
@@ -151,7 +154,7 @@ class ncxExtract:
                 num += 1
                 link = '%s#filepos%d' % (htmlfile, e['pos'])
                 tagid = 'np_%d' % num
-                entry = ncx_entry % (tagid, num, e['text'], link)
+                entry = ncx_entry % (tagid, num, xmlescape(unescapeit(e['text'])), link)
                 entry = re.sub(re.compile('^', re.M), indent, entry, 0)
                 xml += entry + '\n'
                 # recurs
@@ -242,7 +245,7 @@ class ncxExtract:
                 else:
                     link = 'Text/%s#%s' % (htmlfile, desttag)
                 tagid = 'np_%d' % num
-                entry = ncx_entry % (tagid, num, e['text'], link)
+                entry = ncx_entry % (tagid, num, xmlescape(unescapeit(e['text'])), link)
                 entry = re.sub(re.compile('^', re.M), indent, entry, 0)
                 xml += entry + '\n'
                 # recurs
