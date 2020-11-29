@@ -315,7 +315,12 @@ class OPFProcessor(object):
         data.append(BEGIN_INFO_ONLY + '\n')
         if 'ThumbOffset' in metadata:
             imageNumber = int(metadata['ThumbOffset'][0])
-            imageName = self.rscnames[imageNumber]
+            # Some bad books give image indexes that are 'out of range'
+            try:
+                imageName = self.rscnames[imageNumber]
+            except:
+                print('Number given for Cover Thumbnail is out of range: %s' % imageNumber)
+                imageName = None
             if imageName is None:
                 print("Error: Cover Thumbnail image %s was not recognized as a valid image" % imageNumber)
             else:
