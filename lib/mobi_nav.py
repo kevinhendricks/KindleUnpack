@@ -162,6 +162,7 @@ class NAVProcessor(object):
         nav_header += '<meta charset="UTF-8" />\n'
         nav_header += '<style type="text/css">\n'
         nav_header += 'nav#landmarks { display:none; }\n'
+        nav_header += 'ol { list-style-type: none; }'
         nav_header += '</style>\n</head>\n<body>\n'
         nav_footer = '</body>\n</html>\n'
 
