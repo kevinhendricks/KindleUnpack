@@ -393,7 +393,7 @@ def processRESC(i, files, rscnames, sect, data, k8resc):
     return rscnames, k8resc
 
 
-def processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset):
+def processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset, thumb_offset):
     global DUMP
     # Extract an Image
     imgtype = get_image_type(None, data)
@@ -412,6 +412,8 @@ def processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset):
     imgname = "image%05d.%s" % (i, imgtype)
     if cover_offset is not None and i == beg + cover_offset:
         imgname = "cover%05d.%s" % (i, imgtype)
+    if thumb_offset is not None and i == beg + thumb_offset:
+        imgname = "thumb%05d.%s" % (i, imgtype)
     print("Extracting image: {0:s} from section {1:d}".format(imgname,i))
     outimg = os.path.join(files.imgdir, imgname)
     with open(pathof(outimg), 'wb') as f:
@@ -778,6 +780,12 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
             # processing first part of a combination file
             end = K8Boundary
 
+        # Not sure the try/except is necessary, but just in case
+        try: 
+            thumb_offset = int(metadata.get('ThumbOffset', ['-1'])[0])
+        except:
+            thumb_offset = None
+
         cover_offset = int(metadata.get('CoverOffset', ['-1'])[0])
         if not CREATE_COVER_PAGE:
             cover_offset = None
@@ -827,7 +835,7 @@ def process_all_mobi_headers(files, apnxfile, sect, mhlst, K8Boundary, k8only=Fa
                 rscnames.append(None)
             else:
                 # if reached here should be an image ow treat as unknown
-                rscnames, rsc_ptr  = processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset)
+                rscnames, rsc_ptr  = processImage(i, files, rscnames, sect, data, beg, rsc_ptr, cover_offset, thumb_offset)
         # done unpacking resources
 
         # Print Replica
