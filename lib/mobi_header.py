@@ -663,7 +663,7 @@ class MobiHeader:
             return
         num_items, = struct.unpack(b'>L', self.exth[8:12])
         pos = 12
-        print("Key Size Decription                     Value")
+        print("Key Size Description                    Value")
         for _ in range(num_items):
             id, size = struct.unpack(b'>LL', self.exth[pos:pos+8])
             contentsize = size-8
