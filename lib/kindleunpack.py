@@ -142,6 +142,7 @@ if PY2:
 #  0.80   converted to work with both python 2.7 and Python 3.3 and later
 #  0.81   various fixes
 #  0.82   Handle calibre-generated mobis that can have skeletons with no fragments
+#  0.83   Fix header item 114 being mistakenly treated as a string instead of a value
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -959,9 +960,9 @@ def main(argv=unicode_argv()):
     global WRITE_RAW_DATA
     global SPLIT_COMBO_MOBIS
 
-    print("KindleUnpack v0.82")
+    print("KindleUnpack v0.83")
     print("   Based on initial mobipocket version Copyright © 2009 Charles M. Hannum <root@ihack.net>")
-    print("   Extensive Extensions and Improvements Copyright © 2009-2014 ")
+    print("   Extensive Extensions and Improvements Copyright © 2009-2020 ")
     print("       by:  P. Durrant, K. Hendricks, S. Siebert, fandrieu, DiapDealer, nickredding, tkeo.")
     print("   This program is free software: you can redistribute it and/or modify")
     print("   it under the terms of the GNU General Public License as published by")
