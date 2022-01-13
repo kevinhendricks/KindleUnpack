@@ -791,7 +791,7 @@ class MobiHeader:
     def Language(self):
         langcode = struct.unpack(b'!L', self.header[0x5c:0x60])[0]
         langid = langcode & 0xFF
-        sublangid = (langcode >> 8) & 0xFF
+        sublangid = (langcode >> 10) & 0xFF
         return getLanguage(langid, sublangid)
 
     def DictInLanguage(self):
