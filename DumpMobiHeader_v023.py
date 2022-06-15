@@ -626,7 +626,7 @@ def usage(progname):
 
 
 def main(argv=sys.argv):
-    print("DumpMobiHeader v022")
+    print("DumpMobiHeader v023")
     progname = os.path.basename(argv[0])
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h")
