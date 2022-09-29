@@ -109,9 +109,10 @@ class HTMLProcessor:
 
 class XHTMLK8Processor:
 
-    def __init__(self, rscnames, k8proc):
+    def __init__(self, rscnames, k8proc, viewport=None):
         self.rscnames = rscnames
         self.k8proc = k8proc
+        self.viewport = viewport
         self.used = {}
 
     def buildXHTML(self):
@@ -432,6 +433,19 @@ class XHTMLK8Processor:
             part = b"".join(srcpieces)
             # store away modified version
             parts[i] = part
+
+        # handle injection viewport meta data if needed in each xhtml file
+        if self.viewport:
+            injected_meta = b'<meta name="viewport" content="' + utf8_str(self.viewport) + b'"/>\n'
+            viewport_pattern = re.compile(br'''<meta\s[^>]*name\s*=\s*["'][^"'>]*viewport["'][^>]*>''', re.IGNORECASE)
+            for i in range(len(parts)):
+                part = parts[i]
+                # only inject if a viewport meta item does not already exist in that part
+                if not viewport_pattern.search(part):
+                    endheadpos = part.find(b'</head>')
+                    if endheadpos >= 0:
+                        part = part[0:endheadpos] + injected_meta + part[endheadpos:]
+                parts[i] = part
 
         self.k8proc.setFlows(flows)
         self.k8proc.setParts(parts)

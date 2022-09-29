@@ -143,6 +143,7 @@ if PY2:
 #  0.81   various fixes
 #  0.82   Handle calibre-generated mobis that can have skeletons with no fragments
 #  0.83   Fix header item 114 being mistakenly treated as a string instead of a value
+#  0.84   Try to better follow the epub3 fixed layout spec when unpacking fixed layout mobis 
 
 DUMP = False
 """ Set to True to dump all possible information. """
@@ -536,9 +537,22 @@ def processMobi8(mh, metadata, sect, files, rscnames, pagemapproc, k8resc, obfus
         ncxmap['idtag'] = unicode_str(idtag)
         ncx_data[i] = ncxmap
 
+    # FYI:  KindleUnpack does *not* support mixed fixed/reflowable format epubs
+    # Books are assumed to be either fully fixed format or fully reflowable
+    
+    # look to see if this kf8 was a fixed format and if so
+    # set a viewport to be set in every xhtml file
+    viewport = None
+    if 'original-resolution' in metadata:
+        if 'true' == metadata.get('fixed-layout', [''])[0].lower():
+            resolution = metadata['original-resolution'][0].lower()
+            width, height = resolution.split('x')
+            if width.isdigit() and int(width) > 0 and height.isdigit() and int(height) > 0: 
+                viewport = 'width=%s, height=%s' % (width, height) 
+
     # convert the rawML to a set of xhtml files
     print("Building an epub-like structure")
-    htmlproc = XHTMLK8Processor(rscnames, k8proc)
+    htmlproc = XHTMLK8Processor(rscnames, k8proc, viewport)
     usedmap = htmlproc.buildXHTML()
 
     # write out the xhtml svg, and css files
@@ -566,7 +580,7 @@ def processMobi8(mh, metadata, sect, files, rscnames, pagemapproc, k8resc, obfus
                 fileinfo.append(["coverpage", 'Text', filename])
                 guidetext += cover.guide_toxml()
                 cover.writeXHTML()
-
+                
     n =  k8proc.getNumberOfParts()
     for i in range(n):
         part = k8proc.getPart(i)

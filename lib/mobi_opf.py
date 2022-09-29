@@ -677,10 +677,9 @@ class OPFProcessor(object):
         # meta viewport property tag stored in the <head></head> of **each**
         # xhtml page - so this tag would need to be handled by editing each part
         # before reaching this routine
-        # we need to add support for this to the k8html routine
-        # if 'original-resolution' in metadata.keys():
-        #     resolution = metadata['original-resolution'][0].lower()
-        #     width, height = resolution.split('x')
-        #     if width.isdigit() and int(width) > 0 and height.isdigit() and int(height) > 0:
-        #         viewport = 'width=%s, height=%s' % (width, height)
-        #         self.createMetaTag(self.exth_fixedlayout_metadata, 'rendition:viewport', viewport)
+        if 'original-resolution' in metadata.keys():
+            resolution = metadata['original-resolution'][0].lower()
+            width, height = resolution.split('x')
+            if width.isdigit() and int(width) > 0 and height.isdigit() and int(height) > 0:
+                viewport = 'width=%s, height=%s' % (width, height)
+                self.createMetaTag(self.exth_fixedlayout_metadata, 'rendition:viewport', viewport)
