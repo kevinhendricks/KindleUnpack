@@ -6,22 +6,22 @@ python based software to unpack Amazon / Kindlegen generated ebooks
 KindleUnpack unpacks a non-DRM Kindle/MobiPocket ebook into its component parts 
 which change depending on the type of Kindle/Mobi ebook being processed
 
-	- MobiPocket and early Kindle version 7 or less ebooks are unpacked to the 
-            original html 3.2 and images folder that can then be edited and reprocessed by 
-            MobiPocketCreator.
+  - MobiPocket and early Kindle version 7 or less ebooks are unpacked to the 
+    original html 3.2 and images folder that can then be edited and reprocessed by 
+    MobiPocketCreator.
 
-	- Kindle Print Replica ebook are unpacked to the original PDF and any associated images.
+  - Kindle Print Replica ebook are unpacked to the original PDF and any associated images.
 
-	- Kindle KF8 only ebooks (.azw3) are unpacked into an epub-like structure that may or 
-            may not be a fully valid epub depending on if a fully valid epub was 
-            originally provided to kindlegen as input.  NOTE: The generated epub should be
-            validated using an epub validator and should changes be needed, it should load
-            properly into Sigil and Calibre either of which can be used to edit the result
-            to create a fully valid epub.
+  - Kindle KF8 only ebooks (.azw3) are unpacked into an epub-like structure that may or 
+    may not be a fully valid epub depending on if a fully valid epub was 
+    originally provided to kindlegen as input.  NOTE: The generated epub should be
+    validated using an epub validator and should changes be needed, it should load
+    properly into Sigil and Calibre either of which can be used to edit the result
+    to create a fully valid epub.
 
-	- Newer Kindle ebooks which have both KF8 and older versions inside are unpacked into 
-            two different parts: the first being the older MobiPocket format ebook parts 
-            and the second being an epub-like structure that can be edited using Sigil
+  - Newer Kindle ebooks which have both KF8 and older versions inside are unpacked into 
+    two different parts: the first being the older MobiPocket format ebook parts 
+    and the second being an epub-like structure that can be edited using Sigil
 
 The KindleUnpack program requires Python 2.7.X or Python 3.4 or later to function properly. 
 
