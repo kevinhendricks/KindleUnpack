@@ -143,7 +143,8 @@ if PY2:
 #  0.81   various fixes
 #  0.82   Handle calibre-generated mobis that can have skeletons with no fragments
 #  0.83   Fix header item 114 being mistakenly treated as a string instead of a value
-#  0.84   Try to better follow the epub3 fixed layout spec when unpacking fixed layout mobis 
+#  0.84   Try to better follow the epub3 fixed layout spec when unpacking fixed layout mobis,
+#         and handle non-xml escaped titles in the ncx
 
 DUMP = False
 """ Set to True to dump all possible information. """

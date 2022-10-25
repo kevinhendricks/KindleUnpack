@@ -167,7 +167,7 @@ class ncxExtract:
             return xml, max_lvl, num
 
         body, max_lvl, num = recursINDX()
-        header = ncx_header % (lang, ident, max_lvl + 1, title)
+        header = ncx_header % (lang, ident, max_lvl + 1, xmlescape(unescapeit(title)))
         ncx =  header + body + ncx_footer
         if not len(indx_data) == num:
             print("Warning: different number of entries in NCX", len(indx_data), num)
@@ -258,7 +258,7 @@ class ncxExtract:
             return xml, max_lvl, num
 
         body, max_lvl, num = recursINDX()
-        header = ncx_header % (lang, ident, max_lvl + 1, title)
+        header = ncx_header % (lang, ident, max_lvl + 1, xmlescape(unescapeit(title)))
         ncx =  header + body + ncx_footer
         if not len(indx_data) == num:
             print("Warning: different number of entries in NCX", len(indx_data), num)
