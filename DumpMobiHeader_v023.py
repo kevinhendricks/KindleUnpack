@@ -368,7 +368,7 @@ class HdrParser:
                 528 : 'Override-kindle-fonts_(528)',
                 529 : 'Compression_Upgraded_(529)',        # was 'kindlegen_Source-Target_(529)'
                 530 : 'Soft_Hyphens_In_Content_(530)',
-                531 : 'Dictionary_In_Langague_(531)',
+                531 : 'Dictionary_In_Languague_(531)',
                 532 : 'Dictionary_Out_Language_(532)',
                 533 : 'Font_Converted_(533)',
                 534 : 'Amazon_Creator_Info_(534)',         # was 'Input_Source_Type_(534)'
@@ -533,7 +533,7 @@ def dump_contexth(cpage, extheader):
         528 : 'Override-kindle-fonts_(528)',
         529 : 'Compression_Upgraded_(529)',        # was 'kindlegen_Source-Target_(529)'
         530 : 'Soft_Hyphens_In_Content_(530)',
-        531 : 'Dictionary_In_Langague_(531)',
+        531 : 'Dictionary_In_Languague_(531)',
         532 : 'Dictionary_Out_Language_(532)',
         533 : 'Font_Converted_(533)',
         534 : 'Amazon_Creator_Info_(534)',         # was 'Input_Source_Type_(534)'

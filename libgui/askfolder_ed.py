@@ -169,7 +169,7 @@ def AskFolder(
                 if cancelButton:
                     user32.SetWindowTextW(cancelButton, label)
             if windowTitle:
-                title = unicode(windowTitle, erros='replace')
+                title = unicode(windowTitle, errors='replace')
                 user32.SetWindowTextW(hwnd, title)
             if defaultLocation:
                 user32.SendMessageW(hwnd, BFFM_SETSELECTIONW, 1, defaultLocation.replace('/', '\\'))

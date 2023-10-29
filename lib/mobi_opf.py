@@ -307,7 +307,7 @@ class OPFProcessor(object):
         if self.target_epubver == '3':
             # Append metadata for EPUB3.
             if self.exth_fixedlayout_metadata:
-                data.append('<!-- EPUB3 MedaData converted from EXTH -->\n')
+                data.append('<!-- EPUB3 MetaData converted from EXTH -->\n')
                 data += self.exth_fixedlayout_metadata
 
         # all that remains is extra EXTH info we will store inside a comment inside meta name/content pairs
