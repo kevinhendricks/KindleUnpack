@@ -203,7 +203,7 @@ class dictSupport(object):
                             else:
                                 utext += unichr(off)
                             pos += inc
-                        text = utext.encode('utf-8')
+                        text = utext.encode('utf-8', 'replace')
 
                     tagMap = getTagMap(controlByteCount, tagTable, data, startPos+1+textLength, endPos)
                     if 0x01 in tagMap:
